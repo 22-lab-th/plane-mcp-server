@@ -35,6 +35,9 @@ SAMPLES: dict[str, object] = {
 # Actions that require *one of* several optional parameters -- a condition the
 # declaration cannot express, so the case is spelled out here.
 CONDITIONAL: dict[tuple[str, str], dict[str, object]] = {
+    ("automation", "update"): {"archive_in": 1},
+    ("page", "update"): {"name": "Renamed"},
+    ("view", "update"): {"name": "Renamed"},
     ("cycle", "manage_workitems"): {"add_ids": "id-1"},
     ("module", "manage_workitems"): {"add_ids": "id-1"},
     ("milestone", "manage_workitems"): {"add_ids": "id-1"},
@@ -59,8 +62,10 @@ NO_CALL_EXPECTED: set[tuple[str, str]] = {
 }
 
 # Actions that need populated remote state or an outbound HTTP fetch to get past
-# their own preconditions. Covered by tests/tools/test_attachments.py.
+# their own preconditions. Covered by focused tests below or in test_attachments.py.
 NEEDS_FIXTURE: set[tuple[str, str]] = {
+    ("page", "upload_asset_from_path"),
+    ("page", "upload_asset_from_url"),
     ("workitem_attachment", "read"),
     ("workitem_attachment", "download_url"),
     ("workitem_attachment", "upload_from_url"),
@@ -111,6 +116,8 @@ def test_action_reaches_the_sdk(mod, action, registered, spy):
     """A fully-specified action must produce a real, well-typed SDK call."""
     if (mod.NAME, action.name) in NEEDS_FIXTURE:
         pytest.skip("needs populated remote state; covered by test_attachments.py")
+    if (mod.NAME, action.name) == ("view", "retrieve"):
+        spy.returns["projects._get"] = {"id": "view-1", "name": "View"}
     tool = registered[mod.NAME]
     result = tool.fn(**_call_args(mod, action, tool))
 
@@ -293,6 +300,252 @@ def test_archiving_a_work_item_confirms_what_it_did(archive, registered, spy):
     )
     verb = "archive" if archive else "unarchive"
     assert spy.recorder.only().method == f"work_items.{verb}"
+
+
+def test_updating_a_project_page_patches_only_supplied_fields(registered, spy):
+    from plane.models.pages import Page
+
+    spy.returns["pages._patch"] = {"id": "page-1", "name": "Renamed", "description_html": ""}
+
+    result = registered["page"].fn(
+        action="update",
+        project_id="project-1",
+        page_id="page-1",
+        name="Renamed",
+        description_html="",
+    )
+
+    call = spy.recorder.only()
+    assert call.method == "pages._patch"
+    assert call.kwargs == {
+        "endpoint": "acme/projects/project-1/pages/page-1",
+        "data": {"name": "Renamed", "description_html": ""},
+    }
+    assert isinstance(result, Page)
+    assert result.id == "page-1"
+    assert result.name == "Renamed"
+
+
+def test_updating_a_page_requires_a_change(registered, spy):
+    result = registered["page"].fn(action="update", page_id="page-1")
+
+    assert result == "Error: update requires at least one field to change"
+    assert not spy.recorder.calls
+
+
+def test_archiving_a_workspace_page_sets_an_iso_date(registered, spy):
+    from datetime import date
+
+    spy.returns["pages._patch"] = {"id": "page-1", "archived_at": "2026-08-25"}
+
+    result = registered["page"].fn(action="archive", page_id="page-1")
+
+    call = spy.recorder.only()
+    assert call.method == "pages._patch"
+    assert call.kwargs["endpoint"] == "acme/pages/page-1"
+    archived_at = call.kwargs["data"]["archived_at"]
+    assert date.fromisoformat(archived_at).isoformat() == archived_at
+    assert result.id == "page-1"
+    assert result.archived_at == "2026-08-25"
+
+
+def test_project_page_folders_use_hierarchy_public_api(registered, spy):
+    spy.returns["pages._post"] = {
+        "id": "folder-1",
+        "name": "Delivery",
+        "node_type": "folder",
+        "parent": None,
+    }
+
+    created = registered["page"].fn(
+        action="create_folder",
+        project_id="project-1",
+        name="Delivery",
+        access=0,
+        sort_order=5,
+    )
+
+    call = spy.recorder.only()
+    assert call.method == "pages._post"
+    assert call.kwargs == {
+        "endpoint": "acme/projects/project-1/pages",
+        "data": {"name": "Delivery", "node_type": "folder", "access": 0, "sort_order": 5},
+    }
+    assert created["node_type"] == "folder"
+
+
+def test_moving_page_to_root_sends_explicit_null_parent(registered, spy):
+    spy.returns["pages._patch"] = {"id": "page-1", "parent": None}
+
+    result = registered["page"].fn(
+        action="move", project_id="project-1", page_id="page-1"
+    )
+
+    call = spy.recorder.only()
+    assert call.method == "pages._patch"
+    assert call.kwargs == {
+        "endpoint": "acme/projects/project-1/pages/page-1",
+        "data": {"parent": None},
+    }
+    assert result["parent"] is None
+
+
+def test_project_page_archive_and_restore_use_tree_endpoint(registered, spy):
+    archived = registered["page"].fn(
+        action="archive", project_id="project-1", page_id="folder-1"
+    )
+    archive_call = spy.recorder.only()
+    assert archive_call.method == "pages._post"
+    assert archive_call.kwargs["endpoint"] == "acme/projects/project-1/pages/folder-1/archive"
+    assert archived == {"page_id": "folder-1", "archived": True}
+
+    spy.recorder.calls.clear()
+    restored = registered["page"].fn(
+        action="restore", project_id="project-1", page_id="folder-1"
+    )
+    restore_call = spy.recorder.only()
+    assert restore_call.method == "pages._delete"
+    assert restore_call.kwargs["endpoint"] == "acme/projects/project-1/pages/folder-1/archive"
+    assert restored == {"page_id": "folder-1", "archived": False}
+
+
+def test_listing_page_assets_uses_the_page_scoped_endpoint(registered, spy):
+    spy.returns["pages._get"] = {"results": [], "next_cursor": None}
+
+    result = registered["page"].fn(
+        action="list_assets",
+        project_id="project-1",
+        page_id="page-1",
+        per_page=25,
+    )
+
+    call = spy.recorder.only()
+    assert call.method == "pages._get"
+    assert call.kwargs == {
+        "endpoint": "acme/projects/project-1/pages/page-1/assets",
+        "params": {"per_page": 25},
+    }
+    assert result == {"results": [], "next_cursor": None}
+
+
+def test_uploading_a_local_page_image_uses_presigned_storage_and_verifies_it(registered, spy, monkeypatch, tmp_path):
+    image = tmp_path / "diagram.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\n" + b"test-image")
+    monkeypatch.setenv("PLANE_FILE_UPLOAD_ROOTS", str(tmp_path))
+
+    spy.returns["pages._post"] = {
+        "asset_id": "asset-1",
+        "upload_data": {"url": "https://storage.example/upload", "fields": {"key": "asset-1"}},
+    }
+    spy.returns["pages._patch"] = {"asset_id": "asset-1", "is_uploaded": True}
+    spy.returns["pages._get"] = {"asset_id": "asset-1", "is_uploaded": True}
+
+    class UploadResponse:
+        def raise_for_status(self):
+            return None
+
+    upload_calls = []
+
+    def fake_post(url, **kwargs):
+        upload_calls.append((url, kwargs))
+        return UploadResponse()
+
+    monkeypatch.setattr("plane_mcp.tools.page.requests.post", fake_post)
+
+    result = registered["page"].fn(
+        action="upload_asset_from_path",
+        project_id="project-1",
+        page_id="page-1",
+        file_path=str(image),
+    )
+
+    assert spy.recorder.methods == ["pages._post", "pages._patch", "pages._get"]
+    assert spy.recorder.calls[0].kwargs == {
+        "endpoint": "acme/projects/project-1/pages/page-1/assets",
+        "data": {"name": "diagram.png", "type": "image/png", "size": 18},
+    }
+    assert upload_calls[0][0] == "https://storage.example/upload"
+    assert upload_calls[0][1]["data"] == {"key": "asset-1"}
+    assert result["image_html"] == (
+        '<image-component src="asset-1" alignment="center" status="uploaded"></image-component>'
+    )
+
+
+def test_local_page_image_must_be_inside_an_allowed_root(registered, spy, monkeypatch, tmp_path):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"\x89PNG\r\n\x1a\nnot-allowed")
+    monkeypatch.setenv("PLANE_FILE_UPLOAD_ROOTS", str(allowed))
+
+    try:
+        registered["page"].fn(
+            action="upload_asset_from_path",
+            project_id="project-1",
+            page_id="page-1",
+            file_path=str(outside),
+        )
+    except ValueError as error:
+        assert "outside PLANE_FILE_UPLOAD_ROOTS" in str(error)
+    else:
+        raise AssertionError("an out-of-scope local file was accepted")
+    assert not spy.recorder.calls
+
+
+def test_automation_can_disable_both_rules_and_clear_default_state(registered, spy):
+    result = registered["automation"].fn(
+        action="update",
+        project_id="project-1",
+        archive_in=0,
+        close_in=0,
+    )
+
+    call = spy.recorder.only()
+    assert call.method == "projects._patch"
+    assert call.kwargs == {
+        "endpoint": "acme/projects/project-1",
+        "data": {"archive_in": 0, "close_in": 0, "default_state": None},
+    }
+    assert result == {
+        "project_id": "project-1",
+        "archive_in": 1,
+        "close_in": 0,
+        "default_state": None,
+    }
+
+
+def test_view_create_parses_json_filter_objects(registered, spy):
+    result = registered["view"].fn(
+        action="create",
+        project_id="project-1",
+        name="Urgent",
+        filters='{"priority":["urgent"]}',
+        display_filters='{"layout":"list"}',
+    )
+
+    call = spy.recorder.only()
+    assert call.method == "projects._post"
+    assert call.kwargs == {
+        "endpoint": "acme/projects/project-1/views",
+        "data": {
+            "name": "Urgent",
+            "filters": {"priority": ["urgent"]},
+            "display_filters": {"layout": "list"},
+        },
+    }
+    assert result.id == "view-1"
+
+
+def test_view_rejects_non_object_filters_before_the_api(registered, spy):
+    result = registered["view"].fn(
+        action="create",
+        project_id="project-1",
+        name="Bad",
+        filters='["urgent"]',
+    )
+
+    assert result == "Error: filters must be a JSON object"
+    assert not spy.recorder.calls
 
 
 def test_no_description_warns_about_a_failure_the_caller_cannot_avoid(resource_modules, registered):

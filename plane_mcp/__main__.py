@@ -14,6 +14,7 @@ from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import Mount
 
+from plane_mcp.doctor import run_doctor
 from plane_mcp.server import get_header_mcp, get_oauth_mcp, get_stdio_mcp
 
 LOG_USER_INFO: bool = os.getenv("LOG_USER_INFO", "").lower() == "true"
@@ -114,6 +115,7 @@ class ServerMode(Enum):
     STDIO = "stdio"
     SSE = "sse"
     HTTP = "http"
+    DOCTOR = "doctor"
 
 
 @asynccontextmanager
@@ -131,6 +133,9 @@ def main() -> None:
     server_mode = ServerMode.STDIO
     if len(sys.argv) > 1:
         server_mode = ServerMode(sys.argv[1])
+
+    if server_mode == ServerMode.DOCTOR:
+        raise SystemExit(run_doctor())
 
     if server_mode == ServerMode.STDIO:
         # Validate API_KEY and PLANE_WORKSPACE_SLUG are set

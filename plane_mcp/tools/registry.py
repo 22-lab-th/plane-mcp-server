@@ -17,6 +17,7 @@ from __future__ import annotations
 from types import ModuleType
 
 from plane_mcp.tools import (
+    automation,
     customer,
     customer_property,
     customer_request,
@@ -35,6 +36,7 @@ from plane_mcp.tools import (
     release_label,
     release_tag,
     state,
+    view,
     work_log,
     workitem,
     workitem_activity,
@@ -53,6 +55,7 @@ from plane_mcp.tools import (
 # literal list, so any change shows up as a diff rather than as a silent
 # cache-buster.
 RESOURCES: tuple[ModuleType, ...] = (
+    automation,
     customer,
     customer_property,
     customer_request,
@@ -71,6 +74,7 @@ RESOURCES: tuple[ModuleType, ...] = (
     release_label,
     release_tag,
     state,
+    view,
     work_log,
     workitem,
     workitem_activity,

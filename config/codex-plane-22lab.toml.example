@@ -1,0 +1,11 @@
+# Copy these values into Codex MCP settings. Do not commit a real token.
+[mcp_servers.plane_22lab]
+command = "/Users/teeppiphat/Projects/22lab/plane-mcp-server/.venv/bin/python"
+args = ["-m", "plane_mcp", "stdio"]
+
+[mcp_servers.plane_22lab.env]
+PLANE_BASE_URL = "https://plane.22lab.dev"
+PLANE_WORKSPACE_SLUG = "<workspace-slug>"
+PLANE_API_KEY = "<workspace-api-token>"
+# Optional. Separate multiple roots with ':' on macOS/Linux or ';' on Windows.
+PLANE_FILE_UPLOAD_ROOTS = "/absolute/path/to/allowed/project"

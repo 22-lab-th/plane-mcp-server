@@ -72,6 +72,16 @@ def spy(monkeypatch):
     module's own reference is patched rather than the definition site.
     """
     client = SpyClient()
+    client.returns["pages._patch"] = {}
+    client.returns["projects._post"] = {"id": "view-1", "name": "View"}
+    client.returns["projects._patch"] = {
+        "id": "project-1",
+        "name": "Project",
+        "identifier": "PROJ",
+        "archive_in": 1,
+        "close_in": 0,
+        "default_state": None,
+    }
     # Resources gated on a workspace feature probe it first; answer yes so the
     # dispatch under test is what gets exercised.
     client.returns["workspaces.get_features"] = _AllFeaturesOn()

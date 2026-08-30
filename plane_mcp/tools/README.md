@@ -194,6 +194,7 @@ adopt anyway if the project write is refused.
 
 | Tool | Actions |
 |---|---|
+| `automation` | `get` · `update` |
 | `customer` | `list` · `retrieve` · `create` · `update` · `delete` · `list_workitems` · `manage_workitems` |
 | `customer_property` | `list` · `retrieve` · `create` · `update` · `delete` · `get_values` · `set_values` |
 | `customer_request` | `list` · `retrieve` · `create` · `update` · `delete` |
@@ -205,13 +206,14 @@ adopt anyway if the project write is refused.
 | `member` | `me` · `list_workspace` · `list_project` · `list_roles` · `retrieve_role` |
 | `milestone` | `list` · `retrieve` · `create` · `update` · `delete` · `list_workitems` · `manage_workitems` |
 | `module` | `list` · `retrieve` · `create` · `update` · `delete` · `list_workitems` · `manage_workitems` · `archive` · `unarchive` |
-| `page` | `list` · `retrieve` · `create` · `list_workitem_pages` · `attach_to_workitem` · `detach_from_workitem` |
+| `page` | `list` · `retrieve` · `create` · `create_folder` · `update` · `archive` · `restore` · `move` · `list_assets` · `retrieve_asset` · `download_asset_url` · `upload_asset_from_path` · `upload_asset_from_url` · `delete_asset` · `list_workitem_pages` · `attach_to_workitem` · `detach_from_workitem` |
 | `project` | `list` · `retrieve` · `create` · `update` · `delete` · `archive` · `unarchive` · `worklog_summary` · `get_features` · `update_features` |
 | `project_estimate` | `retrieve` · `create` · `update` · `delete` · `link` · `list_points` · `create_points` · `update_point` · `delete_point` |
 | `release` | `list` · `retrieve` · `create` · `update` · `delete` · `get_changelog` · `update_changelog` · `list_workitems` · `manage_workitems` |
 | `release_label` | `list` · `create` · `update` · `delete` · `attach` · `detach` |
 | `release_tag` | `list` · `retrieve` · `create` · `update` · `delete` |
 | `state` | `list` · `retrieve` · `create` · `update` · `delete` |
+| `view` | `list` · `retrieve` · `create` · `update` · `delete` |
 | `work_log` | `list` · `create` · `update` · `delete` |
 | `workitem` | `list` · `list_archived` · `retrieve` · `retrieve_by_identifier` · `search` · `count` · `create` · `update` · `delete` · `archive` · `manage_assignee` · `manage_label` |
 | `workitem_activity` | `list` · `retrieve` |

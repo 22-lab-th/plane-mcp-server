@@ -7,7 +7,7 @@ work items, cycles, modules, releases, customers and more.
 Built on [FastMCP](https://github.com/jlowin/fastmcp) and the official
 [`plane-sdk`](https://pypi.org/project/plane-sdk/).
 
-- **28 tools**, one per Plane resource, covering 183 operations
+- **30 tools**, one per Plane resource, covering 201 operations
 - **Local or remote** — stdio, streamable HTTP, SSE
 - **OAuth or API key** authentication
 
@@ -35,6 +35,9 @@ Add this to your MCP client's configuration:
 `uvx` needs no install step. Requires Python 3.10+.
 
 For a self-hosted Plane, add `"PLANE_BASE_URL": "https://plane.example.com"`.
+Values ending in `/api` or `/api/v1` are also accepted and normalized to the
+instance origin. Run `plane-mcp-server doctor` after setting the environment to
+verify the core API and report whether the instance exposes API-token Pages.
 
 ## Transports
 
