@@ -159,7 +159,25 @@ Self-hosting the server itself:
 | `PLANE_INTERNAL_BASE_URL` | Internal URL for server-to-server calls, preferred over `PLANE_BASE_URL` |
 | `REDIS_HOST` / `REDIS_PORT` | OAuth token storage; falls back to in-memory |
 | `PLANE_OAUTH_PROVIDER_*` | OAuth client credentials and base URL |
+| `PLANE_OAUTH_ENABLED` | `auto` (default), `true`, or `false`; use `false` for PAT-only self-hosted deployments |
+| `PLANE_ALLOWED_WORKSPACE_SLUGS` | Optional comma-separated allowlist enforced by the PAT transport |
 | `MCP_PATH_PREFIX` | Path prefix for the HTTP routes, when mounted behind a proxy — `/plane` serves `/plane/http/mcp` |
+
+Self-hosted Plane releases without OAuth application endpoints can run a shared,
+header-authenticated server without holding a central Plane credential:
+
+```bash
+docker run --rm -p 8211:8211 \
+  -e PLANE_BASE_URL=https://plane.example.com \
+  -e PLANE_OAUTH_ENABLED=false \
+  -e PLANE_ALLOWED_WORKSPACE_SLUGS=my-workspace \
+  plane-mcp-server
+```
+
+Each member connects to `https://your-mcp-host/mcp` with their own headers:
+`Authorization: Bearer <personal Plane API token>` and
+`X-Workspace-Slug: my-workspace`. Tokens remain revocable per member and are
+never stored by the MCP server.
 
 ### OAuth redirect URIs
 

@@ -26,8 +26,10 @@ EXPOSE 8211
 # Set environment variables with defaults
 ENV FASTMCP_PORT=8211
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl --fail --silent http://127.0.0.1:8211/healthz >/dev/null || exit 1
+
 # Default to streamable-http transport, but allow override via command
 # Users can override by passing different transport as CMD
 ENTRYPOINT ["python", "-m", "plane_mcp"]
 CMD ["http"]
-

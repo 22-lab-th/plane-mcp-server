@@ -12,7 +12,8 @@ import uvicorn
 from fastmcp.server.dependencies import get_access_token
 from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
-from starlette.routing import Mount
+from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route
 
 from plane_mcp.doctor import run_doctor
 from plane_mcp.server import get_header_mcp, get_oauth_mcp, get_stdio_mcp
@@ -118,10 +119,40 @@ class ServerMode(Enum):
     DOCTOR = "doctor"
 
 
+def oauth_enabled() -> bool:
+    """Return whether the Plane-backed OAuth transports should be mounted.
+
+    ``PLANE_OAUTH_ENABLED=auto`` (the default) enables OAuth only when both
+    provider credentials exist. This lets self-hosted Plane installations that
+    do not expose Plane OAuth applications run the PAT/header transport without
+    inventing or centrally sharing a credential.
+    """
+    configured = os.getenv("PLANE_OAUTH_ENABLED", "auto").strip().lower()
+    if configured not in {"auto", "true", "false"}:
+        raise ValueError("PLANE_OAUTH_ENABLED must be one of: auto, true, false")
+    if configured == "false":
+        return False
+    credentials_present = bool(
+        os.getenv("PLANE_OAUTH_PROVIDER_CLIENT_ID") and os.getenv("PLANE_OAUTH_PROVIDER_CLIENT_SECRET")
+    )
+    return configured == "true" or credentials_present
+
+
+async def healthz(_request):
+    """Liveness endpoint that does not disclose configuration or credentials."""
+    return JSONResponse({"status": "ok", "oauth_enabled": oauth_enabled()})
+
+
+@asynccontextmanager
+async def header_lifespan(header_app):
+    """Run the single MCP lifespan used by header-only deployments."""
+    async with header_app.lifespan(header_app):
+        yield
+
+
 @asynccontextmanager
 async def combined_lifespan(oauth_app, header_app, sse_app):
-    """Combine lifespans from both OAuth and Header MCP apps."""
-    # Start both lifespans
+    """Combine lifespans from OAuth, header HTTP, and legacy SSE apps."""
     async with oauth_app.lifespan(oauth_app):
         async with header_app.lifespan(header_app):
             async with sse_app.lifespan(sse_app):
@@ -149,32 +180,47 @@ def main() -> None:
 
     if server_mode == ServerMode.HTTP:
         prefix = os.getenv("MCP_PATH_PREFIX") or ""
-
-        oauth_mcp = get_oauth_mcp(prefix + "/http")
-        oauth_app = oauth_mcp.http_app(stateless_http=True)
         header_app = get_header_mcp().http_app(stateless_http=True)
 
-        sse_mcp = get_oauth_mcp(prefix)
-        sse_app = sse_mcp.http_app(transport="sse")
+        if oauth_enabled():
+            oauth_mcp = get_oauth_mcp(prefix + "/http")
+            oauth_app = oauth_mcp.http_app(stateless_http=True)
 
-        # mcp_path is appended to the auth provider's base_url to form the
-        # advertised resource URL. base_url already carries the prefix, so these
-        # stay at /mcp and /sse to avoid double-prefixing.
-        oauth_well_known = oauth_mcp.auth.get_well_known_routes(mcp_path="/mcp")
-        sse_well_known = sse_mcp.auth.get_well_known_routes(mcp_path="/sse")
+            sse_mcp = get_oauth_mcp(prefix)
+            sse_app = sse_mcp.http_app(transport="sse")
 
-        app = Starlette(
-            routes=[
-                # Well-known routes for OAuth and Header HTTP
-                *oauth_well_known,
-                *sse_well_known,
-                # Mount both MCP servers
-                Mount(prefix + "/http/api-key", app=header_app),
-                Mount(prefix + "/http", app=oauth_app),
-                Mount(prefix or "/", app=sse_app),
-            ],
-            lifespan=lambda app: combined_lifespan(oauth_app, header_app, sse_app),
-        )
+            # mcp_path is appended to the auth provider's base_url to form the
+            # advertised resource URL. base_url already carries the prefix, so these
+            # stay at /mcp and /sse to avoid double-prefixing.
+            oauth_well_known = oauth_mcp.auth.get_well_known_routes(mcp_path="/mcp")
+            sse_well_known = sse_mcp.auth.get_well_known_routes(mcp_path="/sse")
+
+            app = Starlette(
+                routes=[
+                    Route("/healthz", healthz),
+                    # Well-known routes for OAuth and Header HTTP
+                    *oauth_well_known,
+                    *sse_well_known,
+                    # Mount both MCP servers
+                    Mount(prefix + "/http/api-key", app=header_app),
+                    Mount(prefix + "/http", app=oauth_app),
+                    Mount(prefix or "/", app=sse_app),
+                ],
+                lifespan=lambda app: combined_lifespan(oauth_app, header_app, sse_app),
+            )
+            endpoints = f"{prefix}/http/mcp (OAuth), {prefix}/http/api-key/mcp (PAT)"
+        else:
+            # In header-only mode expose a short canonical endpoint while
+            # retaining the historical path for existing clients.
+            app = Starlette(
+                routes=[
+                    Route("/healthz", healthz),
+                    Mount(prefix + "/http/api-key", app=header_app),
+                    Mount(prefix or "/", app=header_app),
+                ],
+                lifespan=lambda app: header_lifespan(header_app),
+            )
+            endpoints = f"{prefix}/mcp (PAT), {prefix}/http/api-key/mcp (PAT)"
 
         app.add_middleware(
             CORSMiddleware,
@@ -194,7 +240,7 @@ def main() -> None:
             uv_handler.addFilter(UserContextFilter())
             uv_logger.addHandler(uv_handler)
 
-        logger.info("Starting HTTP server at URLs: /mcp and /header/mcp")
+        logger.info("Starting HTTP server at URLs: %s", endpoints)
         uvicorn.run(
             app,
             host="0.0.0.0",

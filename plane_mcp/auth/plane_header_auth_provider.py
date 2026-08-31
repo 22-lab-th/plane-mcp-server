@@ -16,8 +16,8 @@ class PlaneHeaderAuthProvider(TokenVerifier):
         super().__init__(required_scopes=required_scopes)
         self.timeout_seconds = timeout_seconds
 
-    async def _validate_api_key(self, token: str) -> bool:
-        """Validate the API key by calling the Plane API."""
+    async def _validate_api_key(self, token: str) -> dict | None:
+        """Validate the API key and return the authenticated Plane user."""
         base_url = (os.getenv("PLANE_INTERNAL_BASE_URL") or os.getenv("PLANE_BASE_URL", DEFAULT_PLANE_BASE_URL)).rstrip(
             "/"
         )
@@ -34,11 +34,19 @@ class PlaneHeaderAuthProvider(TokenVerifier):
                 )
                 if response.status_code != 200:
                     logger.warning("API key validation failed: %s", response.status_code)
-                    return False
-                return True
+                    return None
+                data = response.json()
+                return data if isinstance(data, dict) else {}
         except httpx.RequestError as e:
             logger.warning("API key validation request failed: %s", e)
-            return False
+            return None
+
+    @staticmethod
+    def _workspace_allowed(workspace_slug: str) -> bool:
+        """Restrict a shared deployment to explicitly configured workspaces."""
+        configured = os.getenv("PLANE_ALLOWED_WORKSPACE_SLUGS", "")
+        allowed = {slug.strip() for slug in configured.split(",") if slug.strip()}
+        return not allowed or workspace_slug in allowed
 
     async def verify_token(self, token: str) -> AccessToken | None:
         try:
@@ -52,7 +60,12 @@ class PlaneHeaderAuthProvider(TokenVerifier):
                     logger.warning("x-api-key header found but x-workspace-slug is missing")
                     return None
 
-                if not await self._validate_api_key(token):
+                if not self._workspace_allowed(workspace_slug):
+                    logger.warning("Workspace is not allowed for this MCP deployment")
+                    return None
+
+                user = await self._validate_api_key(token)
+                if user is None:
                     logger.warning("API key validation against Plane API failed")
                     return None
 
@@ -66,6 +79,8 @@ class PlaneHeaderAuthProvider(TokenVerifier):
                     claims={
                         "auth_method": "api_key_header",
                         "workspace_slug": workspace_slug,
+                        "sub": str(user.get("id", "")),
+                        "display_name": user.get("display_name") or user.get("first_name") or "",
                     },
                 )
         except RuntimeError:
