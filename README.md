@@ -7,7 +7,7 @@ work items, cycles, modules, releases, customers and more.
 Built on [FastMCP](https://github.com/jlowin/fastmcp) and the official
 [`plane-sdk`](https://pypi.org/project/plane-sdk/).
 
-- **30 tools**, one per Plane resource, covering 201 operations
+- **30 tools**, one per Plane resource, covering 203 operations
 - **Local or remote** — stdio, streamable HTTP, SSE
 - **OAuth or API key** authentication
 
@@ -101,7 +101,7 @@ HTTP transport instead.
 
 ## Tools
 
-The server advertises 28 tools, one per resource. Each takes an `action`
+The server advertises 30 tools, one per resource. Each takes an `action`
 parameter that selects the operation:
 
 ```python
@@ -126,6 +126,34 @@ workitem(action="count", pql='assignees__id = "<member id>"', group_by="state_id
 
 Call `get_pql_reference` for the full syntax, operators and worked examples.
 
+### Importing Markdown with images
+
+The `page` tool can import one Markdown file, a directory, or a ZIP bundle while
+preserving document folders and storing referenced PNG, JPEG, GIF, and WebP
+images as Page assets:
+
+```python
+page(
+    action="import_markdown_bundle_from_path",
+    project_id="<project uuid>",
+    file_path="/allowed/docs.zip",
+    remote_images="copy",
+    on_error="stop",
+)
+```
+
+Local sources must be inside `PLANE_FILE_UPLOAD_ROOTS`. Use `dry_run=true` to
+inspect the plan without creating anything. ZIP imports reject traversal paths,
+symlinks, oversized archives, and excessive entry counts. When `on_error` is
+`stop`, newly created Pages and folders are archived on failure.
+
+The same importer is available as a CLI:
+
+```bash
+plane-page-import ./docs.zip --project <project-uuid> --dry-run
+plane-page-import ./docs --project <project-uuid> --remote-images copy
+```
+
 ### Upgrading from the per-operation tools
 
 Earlier releases exposed one tool per API operation. **Existing integrations keep
@@ -148,6 +176,7 @@ unchanged.
 | `PLANE_API_KEY` | stdio | API key |
 | `PLANE_WORKSPACE_SLUG` | stdio | Target workspace |
 | `PLANE_BASE_URL` | optional | Plane API URL (default `https://api.plane.so`) |
+| `PLANE_FILE_UPLOAD_ROOTS` | local image/Page imports | Allowed local roots separated by the platform path separator |
 
 The remote transports carry credentials in the connection — the OAuth flow or the
 PAT headers — and need none of these.

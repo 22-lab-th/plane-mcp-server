@@ -206,7 +206,7 @@ adopt anyway if the project write is refused.
 | `member` | `me` · `list_workspace` · `list_project` · `list_roles` · `retrieve_role` |
 | `milestone` | `list` · `retrieve` · `create` · `update` · `delete` · `list_workitems` · `manage_workitems` |
 | `module` | `list` · `retrieve` · `create` · `update` · `delete` · `list_workitems` · `manage_workitems` · `archive` · `unarchive` |
-| `page` | `list` · `retrieve` · `create` · `create_folder` · `update` · `archive` · `restore` · `move` · `list_assets` · `retrieve_asset` · `download_asset_url` · `upload_asset_from_path` · `upload_asset_from_url` · `delete_asset` · `list_workitem_pages` · `attach_to_workitem` · `detach_from_workitem` |
+| `page` | `list` · `retrieve` · `create` · `create_folder` · `update` · `archive` · `restore` · `move` · `list_assets` · `retrieve_asset` · `download_asset_url` · `upload_asset_from_path` · `upload_asset_from_url` · `import_markdown_from_path` · `import_markdown_bundle_from_path` · `delete_asset` · `list_workitem_pages` · `attach_to_workitem` · `detach_from_workitem` |
 | `project` | `list` · `retrieve` · `create` · `update` · `delete` · `archive` · `unarchive` · `worklog_summary` · `get_features` · `update_features` |
 | `project_estimate` | `retrieve` · `create` · `update` · `delete` · `link` · `list_points` · `create_points` · `update_point` · `delete_point` |
 | `release` | `list` · `retrieve` · `create` · `update` · `delete` · `get_changelog` · `update_changelog` · `list_workitems` · `manage_workitems` |

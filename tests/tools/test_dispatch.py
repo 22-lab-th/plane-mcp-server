@@ -64,6 +64,8 @@ NO_CALL_EXPECTED: set[tuple[str, str]] = {
 # Actions that need populated remote state or an outbound HTTP fetch to get past
 # their own preconditions. Covered by focused tests below or in test_attachments.py.
 NEEDS_FIXTURE: set[tuple[str, str]] = {
+    ("page", "import_markdown_from_path"),
+    ("page", "import_markdown_bundle_from_path"),
     ("page", "upload_asset_from_path"),
     ("page", "upload_asset_from_url"),
     ("workitem_attachment", "read"),
@@ -377,9 +379,7 @@ def test_project_page_folders_use_hierarchy_public_api(registered, spy):
 def test_moving_page_to_root_sends_explicit_null_parent(registered, spy):
     spy.returns["pages._patch"] = {"id": "page-1", "parent": None}
 
-    result = registered["page"].fn(
-        action="move", project_id="project-1", page_id="page-1"
-    )
+    result = registered["page"].fn(action="move", project_id="project-1", page_id="page-1")
 
     call = spy.recorder.only()
     assert call.method == "pages._patch"
@@ -391,18 +391,14 @@ def test_moving_page_to_root_sends_explicit_null_parent(registered, spy):
 
 
 def test_project_page_archive_and_restore_use_tree_endpoint(registered, spy):
-    archived = registered["page"].fn(
-        action="archive", project_id="project-1", page_id="folder-1"
-    )
+    archived = registered["page"].fn(action="archive", project_id="project-1", page_id="folder-1")
     archive_call = spy.recorder.only()
     assert archive_call.method == "pages._post"
     assert archive_call.kwargs["endpoint"] == "acme/projects/project-1/pages/folder-1/archive"
     assert archived == {"page_id": "folder-1", "archived": True}
 
     spy.recorder.calls.clear()
-    restored = registered["page"].fn(
-        action="restore", project_id="project-1", page_id="folder-1"
-    )
+    restored = registered["page"].fn(action="restore", project_id="project-1", page_id="folder-1")
     restore_call = spy.recorder.only()
     assert restore_call.method == "pages._delete"
     assert restore_call.kwargs["endpoint"] == "acme/projects/project-1/pages/folder-1/archive"

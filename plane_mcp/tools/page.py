@@ -98,6 +98,18 @@ ACTIONS = (
         ("name",),
         note="the URL must be public and is checked against SSRF redirects",
     ),
+    Action(
+        "import_markdown_from_path",
+        ("project_id", "file_path"),
+        ("parent_id", "access", "remote_images", "on_error", "dry_run"),
+        note="imports one Markdown file and referenced images; file_path must be inside PLANE_FILE_UPLOAD_ROOTS",
+    ),
+    Action(
+        "import_markdown_bundle_from_path",
+        ("project_id", "file_path"),
+        ("parent_id", "access", "remote_images", "on_error", "dry_run"),
+        note="imports a Markdown directory or ZIP bundle while preserving folders",
+    ),
     Action("delete_asset", ("project_id", "page_id", "asset_id"), destructive=True),
     Action("list_workitem_pages", ("project_id", "workitem_id"), read=True),
     Action("attach_to_workitem", ("project_id", "workitem_id", "page_id")),
@@ -113,6 +125,8 @@ FOOTER = (
     "description_html is the page body as HTML. access is the page access level. "
     "Omit project_id to work with workspace-level pages. Page assets currently require a project page. "
     "Image uploads return image_html; insert that exact image-component into description_html with update. "
+    "Markdown imports copy relative images into Page assets, can copy or keep public remote images, and return an "
+    "import report. ZIP imports reject traversal paths and symlinks. "
     "Folders support nesting; the API rejects cycles and access mismatches. PNG, JPEG, GIF, and WebP are supported "
     "up to 5 MB."
 )
@@ -290,6 +304,8 @@ def register(mcp: FastMCP) -> None:
             "download_asset_url",
             "upload_asset_from_path",
             "upload_asset_from_url",
+            "import_markdown_from_path",
+            "import_markdown_bundle_from_path",
             "delete_asset",
             "list_workitem_pages",
             "attach_to_workitem",
@@ -302,6 +318,9 @@ def register(mcp: FastMCP) -> None:
         asset_id: str = "",
         file_path: str = "",
         url: str = "",
+        remote_images: Literal["copy", "keep"] = "copy",
+        on_error: Literal["stop", "continue"] = "stop",
+        dry_run: bool = False,
         name: str | None = None,
         description_html: str | None = None,
         parent_id: str | None = None,
@@ -317,6 +336,26 @@ def register(mcp: FastMCP) -> None:
         per_page: int = 0,
     ) -> Page | WorkItemPage | list[WorkItemPage] | dict[str, Any] | str | None:
         client, workspace_slug = get_plane_client_context()
+
+        if action in {"import_markdown_from_path", "import_markdown_bundle_from_path"}:
+            if error := needs(action, project_id=project_id, file_path=file_path):
+                return error
+            from plane_mcp.page_import import import_markdown_path
+
+            try:
+                return import_markdown_path(
+                    client=client,
+                    workspace_slug=workspace_slug,
+                    project_id=project_id,
+                    file_path=file_path,
+                    parent_id=parent_id,
+                    access=access if access is not None else 0,
+                    remote_images=remote_images,
+                    on_error=on_error,
+                    dry_run=dry_run,
+                )
+            except HttpError as error:
+                return _page_api_error(error)
 
         if action == "list":
             params = as_params(PaginatedQueryParams, cursor=cursor, per_page=per_page)
@@ -426,9 +465,7 @@ def register(mcp: FastMCP) -> None:
                 if "parent" in updates or "sort_order" in updates:
                     if not project_id:
                         return "Error: parent_id and sort_order require project_id"
-                    return client.pages._patch(
-                        _project_page_endpoint(workspace_slug, project_id, page_id), updates
-                    )
+                    return client.pages._patch(_project_page_endpoint(workspace_slug, project_id, page_id), updates)
                 data = UpdatePage(**updates)
                 return _patch_page(client, workspace_slug, page_id, data, project_id)
             except HttpError as error:
@@ -439,9 +476,7 @@ def register(mcp: FastMCP) -> None:
                 return missing(action, "page_id")
             try:
                 if project_id:
-                    client.pages._post(
-                        f"{_project_page_endpoint(workspace_slug, project_id, page_id)}/archive", {}
-                    )
+                    client.pages._post(f"{_project_page_endpoint(workspace_slug, project_id, page_id)}/archive", {})
                     return {"page_id": page_id, "archived": True}
                 data = UpdatePage(archived_at=date.today().isoformat())
                 return _patch_page(client, workspace_slug, page_id, data, project_id)
@@ -452,9 +487,7 @@ def register(mcp: FastMCP) -> None:
             if error := needs(action, project_id=project_id, page_id=page_id):
                 return error
             try:
-                client.pages._delete(
-                    f"{_project_page_endpoint(workspace_slug, project_id, page_id)}/archive"
-                )
+                client.pages._delete(f"{_project_page_endpoint(workspace_slug, project_id, page_id)}/archive")
                 return {"page_id": page_id, "archived": False}
             except HttpError as error:
                 return _page_api_error(error)
@@ -466,9 +499,7 @@ def register(mcp: FastMCP) -> None:
             if sort_order is not None:
                 payload["sort_order"] = sort_order
             try:
-                return client.pages._patch(
-                    _project_page_endpoint(workspace_slug, project_id, page_id), payload
-                )
+                return client.pages._patch(_project_page_endpoint(workspace_slug, project_id, page_id), payload)
             except HttpError as error:
                 return _page_api_error(error)
 
