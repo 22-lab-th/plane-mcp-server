@@ -1,7 +1,7 @@
 # The tool surface
 
-**28 tools**, one per Plane resource, each taking an `action` parameter that
-selects the operation. 183 actions in total.
+**36 tools**, one per Plane resource, each taking an `action` parameter that
+selects the operation. 282 actions in total.
 
 ```python
 workitem(action="create", project_id=..., name="Fix login")
@@ -9,7 +9,7 @@ workitem(action="list", project_id=..., pql='state__group = "started"')
 cycle(action="archive", project_id=..., cycle_id=...)
 ```
 
-A compact catalogue — 28 tools, ~57k characters — loads fully in every MCP client
+A compact catalogue — 36 tools, under 85k characters — loads fully in every MCP client
 and leaves the context budget to the conversation.
 
 ## The shape of a resource module
@@ -199,14 +199,14 @@ adopt anyway if the project write is refused.
 | `customer_property` | `list` · `retrieve` · `create` · `update` · `delete` · `get_values` · `set_values` |
 | `customer_request` | `list` · `retrieve` · `create` · `update` · `delete` |
 | `cycle` | `list` · `retrieve` · `create` · `update` · `delete` · `list_workitems` · `manage_workitems` · `transfer_workitems` · `complete` · `archive` · `unarchive` |
-| `get_pql_reference` | *(no action parameter)* |
+| `get_pql_reference` | `read` |
 | `initiative` | `list` · `retrieve` · `create` · `update` · `delete` · `list_projects` · `add_projects` · `remove_projects` |
 | `intake` | `list` · `retrieve` · `create` · `update` · `delete` |
 | `label` | `list` · `retrieve` · `create` · `update` · `delete` |
 | `member` | `me` · `list_workspace` · `list_project` · `list_roles` · `retrieve_role` |
 | `milestone` | `list` · `retrieve` · `create` · `update` · `delete` · `list_workitems` · `manage_workitems` |
 | `module` | `list` · `retrieve` · `create` · `update` · `delete` · `list_workitems` · `manage_workitems` · `archive` · `unarchive` |
-| `page` | `list` · `retrieve` · `create` · `create_folder` · `update` · `archive` · `restore` · `move` · `list_assets` · `retrieve_asset` · `download_asset_url` · `upload_asset_from_path` · `upload_asset_from_url` · `import_markdown_from_path` · `import_markdown_bundle_from_path` · `delete_asset` · `list_workitem_pages` · `attach_to_workitem` · `detach_from_workitem` |
+| `page` | `list` · `retrieve` · `create` · `create_folder` · `update` · `archive` · `restore` · `move` · `list_assets` · `retrieve_asset` · `download_asset_url` · `upload_asset_from_path` · `upload_asset_from_url` · `import_markdown_from_path` · `import_markdown_bundle_from_path` · `delete_asset` · `list_workitem_pages` · `attach_to_workitem` · `detach_from_workitem` · `list_versions` · `retrieve_version` · `duplicate` · `move_to_project` · `lock` · `unlock` · `set_access` · `favorite` · `unfavorite` · `get_summary` · `delete` · `set_collection` |
 | `project` | `list` · `retrieve` · `create` · `update` · `delete` · `archive` · `unarchive` · `worklog_summary` · `get_features` · `update_features` |
 | `project_estimate` | `retrieve` · `create` · `update` · `delete` · `link` · `list_points` · `create_points` · `update_point` · `delete_point` |
 | `release` | `list` · `retrieve` · `create` · `update` · `delete` · `get_changelog` · `update_changelog` · `list_workitems` · `manage_workitems` |
@@ -224,6 +224,12 @@ adopt anyway if the project write is refused.
 | `workitem_relation` | `list` · `create` · `delete` · `list_definitions` · `create_definition` · `update_definition` · `delete_definition` |
 | `workitem_type` | `list` · `retrieve` · `resolve` · `create` · `update` · `delete` · `import_to_project` |
 | `workspace` | `get_features` · `update_features` |
+| `template` | `list` · `create` · `update` · `delete` |
+| `collection` | `list` · `retrieve` · `create` · `update` · `delete` · `list_pages` · `search_pages` · `add_pages` · `remove_page` · `list_members` · `add_member` · `update_member` · `remove_member` |
+| `project_file` | `list` · `retrieve` · `get_storage` · `list_activity` · `preview_url` · `download_url` · `create_folder` · `update_folder` · `delete_folder` · `update` · `delete` · `restore` · `purge` · `copy` · `copy_to_project` · `move_to_project` · `list_versions` · `activate_version` · `list_entity_links` · `link` · `unlink` · `initiate_upload` · `complete_upload` · `abort_upload` · `upload_from_path` |
+| `bookmark` | `list` · `retrieve` · `create` · `update` · `delete` · `get_url_metadata` · `list_groups` · `retrieve_group` · `create_group` · `update_group` · `delete_group` |
+| `atlassian_import` | `list_spaces` · `list_projects` · `list_members` · `list_runs` · `retrieve_run` · `start` · `sync` · `retry_failed` · `retry_selected` · `overwrite` · `import_html_export_from_path` |
+| `instance` | `get_connector` · `update_connector` · `test_connector` |
 
 Every tool's own description lists its actions with their required and optional
 parameters; that description is generated from `ACTIONS` and is the authoritative

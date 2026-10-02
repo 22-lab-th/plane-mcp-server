@@ -17,13 +17,17 @@ from __future__ import annotations
 from types import ModuleType
 
 from plane_mcp.tools import (
+    atlassian_import,
     automation,
+    bookmark,
+    collection,
     customer,
     customer_property,
     customer_request,
     cycle,
     get_pql_reference,
     initiative,
+    instance,
     intake,
     label,
     member,
@@ -32,10 +36,12 @@ from plane_mcp.tools import (
     page,
     project,
     project_estimate,
+    project_file,
     release,
     release_label,
     release_tag,
     state,
+    template,
     view,
     work_log,
     workitem,
@@ -85,6 +91,12 @@ RESOURCES: tuple[ModuleType, ...] = (
     workitem_relation,
     workitem_type,
     workspace,
+    template,
+    collection,
+    project_file,
+    bookmark,
+    atlassian_import,
+    instance,
 )
 
 

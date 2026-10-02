@@ -26,7 +26,16 @@ SAMPLES: dict[str, object] = {
     "group": "started",
     "relation_type": "blocked_by",
     "property_type": "TEXT",
-    "access": 1,
+    "access": {"page": 1, "project": 1, "collection": "private"},
+    "member_access": "edit",
+    "kind": "workitem",
+    "template_data": '{"name":"Spec"}',
+    "provider": "confluence",
+    "entity_type": "page",
+    "remote_id": "100",
+    "item_ids": ["item-1"],
+    "size_bytes": 100,
+    "version_no": 1,
     "network": 2,
     "timezone": "UTC",
     "workitem_identifier": "ENG-42",
@@ -36,6 +45,14 @@ SAMPLES: dict[str, object] = {
 # declaration cannot express, so the case is spelled out here.
 CONDITIONAL: dict[tuple[str, str], dict[str, object]] = {
     ("automation", "update"): {"archive_in": 1},
+    ("state", "create"): {"group": "started"},
+    ("template", "update"): {"name": "Renamed"},
+    ("collection", "update"): {"name": "Renamed"},
+    ("project_file", "update"): {"name": "Renamed"},
+    ("project_file", "update_folder"): {"name": "Renamed"},
+    ("bookmark", "update"): {"title": "Renamed"},
+    ("bookmark", "update_group"): {"name": "Renamed"},
+    ("instance", "update_connector"): {"enabled": False},
     ("page", "update"): {"name": "Renamed"},
     ("view", "update"): {"name": "Renamed"},
     ("cycle", "manage_workitems"): {"add_ids": "id-1"},
@@ -64,6 +81,8 @@ NO_CALL_EXPECTED: set[tuple[str, str]] = {
 # Actions that need populated remote state or an outbound HTTP fetch to get past
 # their own preconditions. Covered by focused tests below or in test_attachments.py.
 NEEDS_FIXTURE: set[tuple[str, str]] = {
+    ("project_file", "upload_from_path"),
+    ("atlassian_import", "import_html_export_from_path"),
     ("page", "import_markdown_from_path"),
     ("page", "import_markdown_bundle_from_path"),
     ("page", "upload_asset_from_path"),
@@ -114,12 +133,21 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize(("mod", "action"), list(_cases(RESOURCES)))
 
 
-def test_action_reaches_the_sdk(mod, action, registered, spy):
+def test_action_reaches_the_sdk(mod, action, registered, spy, monkeypatch):
     """A fully-specified action must produce a real, well-typed SDK call."""
     if (mod.NAME, action.name) in NEEDS_FIXTURE:
         pytest.skip("needs populated remote state; covered by test_attachments.py")
     if (mod.NAME, action.name) == ("view", "retrieve"):
         spy.returns["projects._get"] = {"id": "view-1", "name": "View"}
+    if mod.NAME == "instance":
+        monkeypatch.setenv("PLANE_ENABLE_INSTANCE_TOOLS", "1")
+        monkeypatch.setattr(
+            mod,
+            "request",
+            lambda client, method, endpoint, **kw: getattr(client.pages, "_" + method)(
+                endpoint, **{k: v for k, v in kw.items() if k != "instance"}
+            ),
+        )
     tool = registered[mod.NAME]
     result = tool.fn(**_call_args(mod, action, tool))
 

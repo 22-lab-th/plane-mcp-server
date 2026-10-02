@@ -65,6 +65,8 @@ def _safe_extract(bundle: Path, target: Path) -> None:
 
     with archive:
         entries = archive.infolist()
+        if len({str(PurePosixPath(info.filename)) for info in entries}) != len(entries):
+            raise ValueError("ZIP contains duplicate file paths")
         if len(entries) > MAX_BUNDLE_ENTRIES:
             raise ValueError(f"ZIP bundle contains more than {MAX_BUNDLE_ENTRIES} entries")
         if sum(info.file_size for info in entries) > MAX_EXTRACTED_BYTES:

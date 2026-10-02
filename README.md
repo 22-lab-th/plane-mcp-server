@@ -4,10 +4,14 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for
 [Plane](https://plane.so). Gives an AI agent tools to read and manage projects,
 work items, cycles, modules, releases, customers and more.
 
+> This is the 22lab fork for the [22lab Plane distribution](https://github.com/22-lab-th/plane).
+> Install this repository to use its extension tools; the upstream PyPI package and
+> `mcp.plane.so` service do not include these additions.
+
 Built on [FastMCP](https://github.com/jlowin/fastmcp) and the official
 [`plane-sdk`](https://pypi.org/project/plane-sdk/).
 
-- **30 tools**, one per Plane resource, covering 203 operations
+- **36 tools**, one per Plane resource, covering 282 operations
 - **Local or remote** — stdio, streamable HTTP, SSE
 - **OAuth or API key** authentication
 
@@ -22,7 +26,7 @@ Add this to your MCP client's configuration:
   "mcpServers": {
     "plane": {
       "command": "uvx",
-      "args": ["plane-mcp-server", "stdio"],
+      "args": ["--from", "git+https://github.com/22-lab-th/plane-mcp-server@main", "plane-mcp-server", "stdio"],
       "env": {
         "PLANE_API_KEY": "<your-api-key>",
         "PLANE_WORKSPACE_SLUG": "<your-workspace-slug>"
@@ -47,7 +51,7 @@ Runs as a subprocess of your MCP client. Configuration as shown above; needs
 `PLANE_API_KEY` and `PLANE_WORKSPACE_SLUG`.
 
 ```bash
-PLANE_API_KEY=... PLANE_WORKSPACE_SLUG=... uvx plane-mcp-server stdio
+PLANE_API_KEY=... PLANE_WORKSPACE_SLUG=... uv run plane-mcp-server stdio
 ```
 
 ### HTTP with OAuth — hosted
@@ -101,7 +105,7 @@ HTTP transport instead.
 
 ## Tools
 
-The server advertises 30 tools, one per resource. Each takes an `action`
+The server advertises 36 tools, one per resource. Each takes an `action`
 parameter that selects the operation:
 
 ```python
@@ -114,6 +118,25 @@ Every tool's description lists its actions with their required and optional
 parameters, so the catalogue is self-documenting at call time.
 
 **→ [Full tool and action reference](plane_mcp/tools/README.md)**
+
+### 22lab feature coverage
+
+The `project_file` tool manages Project Files, folders, versions, entity links,
+storage usage, audit history and verified uploads. `bookmark` manages shared
+workspace bookmarks and groups. The expanded `page` tool supports nested folders,
+document moves, locks/access, favorites, duplicates and version history.
+
+`atlassian_import` imports Confluence spaces and Jira projects through Atlassian
+APIs, including attachments and Jira sprints as Cycles. It exposes background
+progress, type counts, failure reasons, retry by item, sync and overwrite.
+Confluence HTML ZIP imports preserve hierarchy and media positions. `instance`
+provides explicitly enabled, administrator-only God Mode connector configuration.
+
+**→ [Setup, feature mapping and examples](docs/22lab-features.md)**
+
+These extension actions require the matching 22lab Plane backend. Core upstream
+tools remain available subject to backend edition and permissions. Interactive
+God Mode login and OIDC setup remain in the Plane UI.
 
 ### Querying work items
 
@@ -176,7 +199,11 @@ unchanged.
 | `PLANE_API_KEY` | stdio | API key |
 | `PLANE_WORKSPACE_SLUG` | stdio | Target workspace |
 | `PLANE_BASE_URL` | optional | Plane API URL (default `https://api.plane.so`) |
-| `PLANE_FILE_UPLOAD_ROOTS` | local image/Page imports | Allowed local roots separated by the platform path separator |
+| `PLANE_FILE_UPLOAD_ROOTS` | local uploads/imports | Allowed roots separated by `:` on macOS/Linux or `;` on Windows; paths belong to the MCP server host |
+| `PLANE_PROJECT_FILE_UPLOAD_MAX_BYTES` | optional | Local Project File limit, default 104857600 bytes; backend limits also apply |
+| `PLANE_STORAGE_UPLOAD_HOSTS` | private storage | Comma-separated trusted upload hostnames, e.g. `localhost,minio`; no ports |
+| `PLANE_ENABLE_INSTANCE_TOOLS` | optional admin tools | Set `1` to permit instance connector configuration; disabled by default |
+| `PLANE_CONFLUENCE_API_TOKEN` / `PLANE_JIRA_API_TOKEN` | stdio connector setup | Optional Atlassian secrets read only by explicit `token_from_env=true` |
 
 The remote transports carry credentials in the connection — the OAuth flow or the
 PAT headers — and need none of these.
@@ -196,6 +223,7 @@ Self-hosted Plane releases without OAuth application endpoints can run a shared,
 header-authenticated server without holding a central Plane credential:
 
 ```bash
+docker build -t plane-mcp-server .
 docker run --rm -p 8211:8211 \
   -e PLANE_BASE_URL=https://plane.example.com \
   -e PLANE_OAUTH_ENABLED=false \
@@ -229,7 +257,8 @@ Structured JSON. Each tool call logs its name, duration, status and — when
 available — an opaque user id and the workspace slug.
 
 ```bash
-export LOG_USER_INFO=true    # also log the display name (PII); default false
+export LOG_USER_INFO=false   # do not log display names
+export LOG_PAYLOADS=false    # omit tool request/result payloads; default true
 ```
 
 Only the OAuth and PAT transports carry a display name; stdio is unaffected.
@@ -237,7 +266,7 @@ Only the OAuth and PAT transports carry a display name; stdio is unaffected.
 ## Development
 
 ```bash
-git clone https://github.com/makeplane/plane-mcp-server
+git clone https://github.com/22-lab-th/plane-mcp-server
 cd plane-mcp-server
 uv pip install -e ".[dev]"
 ```

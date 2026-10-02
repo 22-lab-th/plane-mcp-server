@@ -17,6 +17,7 @@ from urllib.parse import urljoin
 import requests
 from fastmcp import FastMCP
 from plane.errors import HttpError
+from plane.models.collections import AddCollectionPages, UpdateCollectionPage
 from plane.models.pages import CreatePage, Page, UpdatePage
 from plane.models.query_params import PaginatedQueryParams
 from plane.models.work_item_pages import CreateWorkItemPage, WorkItemPage
@@ -50,6 +51,7 @@ ACTIONS = (
             "external_id",
             "parent_id",
             "sort_order",
+            "collection_id",
         ),
     ),
     Action(
@@ -75,7 +77,7 @@ ACTIONS = (
         ),
         note="only the fields you pass are changed",
     ),
-    Action("archive", ("page_id",), ("project_id",), destructive=True),
+    Action("archive", ("page_id",), ("project_id", "archive"), destructive=True),
     Action("restore", ("project_id", "page_id"), note="restores an archived page or folder tree"),
     Action(
         "move",
@@ -119,6 +121,29 @@ ACTIONS = (
         note="workitem_page_id is the link id from list_workitem_pages, not the page id",
         destructive=True,
     ),
+    Action("list_versions", ("project_id", "page_id"), read=True),
+    Action("retrieve_version", ("project_id", "page_id", "version_id"), read=True),
+    Action("duplicate", ("project_id", "page_id")),
+    Action(
+        "move_to_project",
+        ("project_id", "page_id", "target_project_id"),
+        note="preserves content; document goes to target project root",
+        destructive=True,
+    ),
+    Action("lock", ("project_id", "page_id")),
+    Action("unlock", ("project_id", "page_id")),
+    Action("set_access", ("project_id", "page_id", "access")),
+    Action("favorite", ("project_id", "page_id")),
+    Action("unfavorite", ("project_id", "page_id")),
+    Action("get_summary", ("project_id",), read=True),
+    Action(
+        "delete",
+        ("page_id",),
+        ("project_id",),
+        destructive=True,
+        note="requires archived page/folder; removes its tree",
+    ),
+    Action("set_collection", ("page_id", "collection_id"), note="workspace pages on editions supporting collections"),
 )
 
 FOOTER = (
@@ -310,6 +335,18 @@ def register(mcp: FastMCP) -> None:
             "list_workitem_pages",
             "attach_to_workitem",
             "detach_from_workitem",
+            "list_versions",
+            "retrieve_version",
+            "duplicate",
+            "move_to_project",
+            "lock",
+            "unlock",
+            "set_access",
+            "favorite",
+            "unfavorite",
+            "get_summary",
+            "delete",
+            "set_collection",
         ],
         project_id: str = "",
         page_id: str = "",
@@ -334,8 +371,82 @@ def register(mcp: FastMCP) -> None:
         external_id: str | None = None,
         cursor: str = "",
         per_page: int = 0,
+        version_id: str = "",
+        target_project_id: str = "",
+        collection_id: str = "",
+        archive: bool = True,
     ) -> Page | WorkItemPage | list[WorkItemPage] | dict[str, Any] | str | None:
         client, workspace_slug = get_plane_client_context()
+
+        if action in {
+            "list_versions",
+            "retrieve_version",
+            "duplicate",
+            "move_to_project",
+            "lock",
+            "unlock",
+            "set_access",
+            "favorite",
+            "unfavorite",
+            "get_summary",
+            "delete",
+        }:
+            from plane_mcp.extensions import project_path, request, segment
+
+            declared = next(value for value in ACTIONS if value.name == action)
+            values = locals()
+            required = {
+                key: str(access) if key == "access" and access is not None else values[key] for key in declared.requires
+            }
+            if error := needs(action, **required):
+                return error
+            if action == "get_summary":
+                return request(client, "get", project_path(workspace_slug, project_id, "pages-summary"))
+            endpoint = _project_page_endpoint(workspace_slug, project_id, page_id)
+            if action in {"list_versions", "retrieve_version"}:
+                suffix = f"/{segment(version_id)}" if action == "retrieve_version" else ""
+                return request(client, "get", f"{endpoint}/versions{suffix}")
+            if action == "move_to_project":
+                return request(client, "post", f"{endpoint}/move", data={"new_project_id": target_project_id})
+            if action == "duplicate":
+                return request(client, "post", f"{endpoint}/duplicate", data={})
+            if action in {"favorite", "unfavorite"}:
+                endpoint = project_path(workspace_slug, project_id, f"favorite-pages/{segment(page_id)}")
+                result = request(client, "post" if action == "favorite" else "delete", endpoint)
+            elif action == "delete":
+                if not project_id:
+                    client.pages.delete_workspace_page(workspace_slug=workspace_slug, page_id=page_id)
+                    return {"page_id": page_id, "deleted": True}
+                result = request(client, "delete", f"{endpoint}/delete")
+            elif action == "set_access":
+                result = request(client, "post", f"{endpoint}/access", data={"access": access})
+            else:
+                result = request(client, "post" if action == "lock" else "delete", f"{endpoint}/lock")
+            return result or {"page_id": page_id, "action": action, "success": True}
+
+        if action == "set_collection":
+            if error := needs(action, page_id=page_id, collection_id=collection_id):
+                return error
+            filed = client.pages.retrieve_workspace_page(workspace_slug=workspace_slug, page_id=page_id)
+            if not filed.collection_id:
+                added = client.collections.pages.add(
+                    workspace_slug=workspace_slug,
+                    collection_id=collection_id,
+                    data=AddCollectionPages(page_ids=[page_id]),
+                )
+                if not added:
+                    return None
+                membership_id = added[0].id
+            elif str(filed.collection_id) == collection_id:
+                membership_id = filed.page_collection_id
+            else:
+                membership_id = client.collections.pages.update(
+                    workspace_slug=workspace_slug,
+                    collection_id=str(filed.collection_id),
+                    page_collection_id=str(filed.page_collection_id),
+                    data=UpdateCollectionPage(collection=collection_id),
+                ).id
+            return {"page_id": page_id, "collection_id": collection_id, "page_collection_id": str(membership_id)}
 
         if action in {"import_markdown_from_path", "import_markdown_bundle_from_path"}:
             if error := needs(action, project_id=project_id, file_path=file_path):
@@ -390,6 +501,8 @@ def register(mcp: FastMCP) -> None:
         if action == "create":
             if error := needs(action, name=name):
                 return error
+            if collection_id and (project_id or parent_id):
+                return "Error: collection_id is for root workspace pages only"
             payload = {
                 key: value
                 for key, value in {
@@ -413,6 +526,8 @@ def register(mcp: FastMCP) -> None:
                 is_locked=is_locked,
                 external_id=external_id,
                 external_source=external_source,
+                collection_id=collection_id or None,
+                parent_id=parent_id,
             )
             try:
                 if project_id:
@@ -476,8 +591,15 @@ def register(mcp: FastMCP) -> None:
                 return missing(action, "page_id")
             try:
                 if project_id:
-                    client.pages._post(f"{_project_page_endpoint(workspace_slug, project_id, page_id)}/archive", {})
-                    return {"page_id": page_id, "archived": True}
+                    endpoint = f"{_project_page_endpoint(workspace_slug, project_id, page_id)}/archive"
+                    if archive:
+                        client.pages._post(endpoint, {})
+                    else:
+                        client.pages._delete(endpoint)
+                    return {"page_id": page_id, "archived": archive}
+                if not archive:
+                    client.pages.unarchive_workspace_page(workspace_slug=workspace_slug, page_id=page_id)
+                    return {"page_id": page_id, "archived": False}
                 data = UpdatePage(archived_at=date.today().isoformat())
                 return _patch_page(client, workspace_slug, page_id, data, project_id)
             except HttpError as error:
