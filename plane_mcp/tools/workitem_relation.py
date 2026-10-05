@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Literal, get_args
 
 from fastmcp import FastMCP
+from plane.errors.errors import PlaneError
 from plane.models.work_item_relation_definitions import (
     CreateWorkItemRelationDefinition,
     PaginatedWorkItemRelationDefinitionResponse,
@@ -19,7 +20,9 @@ from plane.models.work_item_relation_definitions import (
 from plane.models.work_items import (
     CreateWorkItemCustomRelation,
     CreateWorkItemDependency,
+    CreateWorkItemRelation,
     DependencyTypeEnum,
+    RemoveWorkItemRelation,
 )
 
 from plane_mcp.client import get_plane_client_context
@@ -84,18 +87,33 @@ LEGACY = {
 }
 
 
+def _not_found(exc: PlaneError) -> bool:
+    """True when the server answered 404, i.e. it does not have this endpoint.
+
+    A Plane Community server has no `/dependencies/`, `/work-item-relations/` or
+    `/work-item-relation-definitions/` routes. It has one `/relations/` route, which
+    carries the built-in relation types, so those calls fall back to it.
+    """
+    return getattr(exc, "status_code", None) == 404
+
+
 def _all_definitions(client, workspace_slug: str, is_default, is_active) -> list[WorkItemRelationDefinition]:
     """Definitions are a small set an agent must see whole, so page through them."""
     results: list[WorkItemRelationDefinition] = []
     cursor: str | None = None
     while True:
-        page: PaginatedWorkItemRelationDefinitionResponse = client.work_item_relation_definitions.list(
-            workspace_slug=workspace_slug,
-            is_default=is_default,
-            is_active=is_active,
-            per_page=100,
-            cursor=cursor,
-        )
+        try:
+            page: PaginatedWorkItemRelationDefinitionResponse = client.work_item_relation_definitions.list(
+                workspace_slug=workspace_slug,
+                is_default=is_default,
+                is_active=is_active,
+                per_page=100,
+                cursor=cursor,
+            )
+        except PlaneError as exc:
+            if _not_found(exc):  # server without custom relation definitions
+                return results
+            raise
         results.extend(page.results)
         cursor = page.next_cursor
         if not page.next_page_results or not cursor:
@@ -183,12 +201,24 @@ def register(mcp: FastMCP) -> None:
             return error
 
         if action == "list":
-            dependencies = client.work_items.dependencies.list(
-                workspace_slug=workspace_slug, project_id=project_id, work_item_id=workitem_id
-            )
-            custom = client.work_items.custom_relations.list(
-                workspace_slug=workspace_slug, project_id=project_id, work_item_id=workitem_id
-            )
+            try:
+                dependencies = client.work_items.dependencies.list(
+                    workspace_slug=workspace_slug, project_id=project_id, work_item_id=workitem_id
+                )
+            except PlaneError as exc:
+                if not _not_found(exc):
+                    raise
+                dependencies = client.work_items.relations.list(
+                    workspace_slug=workspace_slug, project_id=project_id, work_item_id=workitem_id
+                )
+            try:
+                custom = client.work_items.custom_relations.list(
+                    workspace_slug=workspace_slug, project_id=project_id, work_item_id=workitem_id
+                )
+            except PlaneError as exc:
+                if not _not_found(exc):
+                    raise
+                custom = {}
             return {
                 "dependencies": dependencies.model_dump(),
                 "custom": {label: [item.model_dump() for item in items] for label, items in custom.items()},
@@ -201,15 +231,28 @@ def register(mcp: FastMCP) -> None:
             if relation_type:
                 if error := one_of("relation_type", relation_type, DEPENDENCY_TYPES, _OTHER_RELATIONS):
                     return error
-                return client.work_items.dependencies.create(
-                    workspace_slug=workspace_slug,
-                    project_id=project_id,
-                    work_item_id=workitem_id,
-                    data=CreateWorkItemDependency(
-                        relation_type=relation_type,  # type: ignore[arg-type]
-                        work_item_ids=targets,
-                    ),
-                )
+                try:
+                    return client.work_items.dependencies.create(
+                        workspace_slug=workspace_slug,
+                        project_id=project_id,
+                        work_item_id=workitem_id,
+                        data=CreateWorkItemDependency(
+                            relation_type=relation_type,  # type: ignore[arg-type]
+                            work_item_ids=targets,
+                        ),
+                    )
+                except PlaneError as exc:
+                    if not _not_found(exc):
+                        raise
+                    return client.work_items.relations.create(
+                        workspace_slug=workspace_slug,
+                        project_id=project_id,
+                        work_item_id=workitem_id,
+                        data=CreateWorkItemRelation(
+                            relation_type=relation_type,  # type: ignore[arg-type]
+                            issues=targets,
+                        ),
+                    )
             if relation_definition_id and relation_definition_label:
                 return client.work_items.custom_relations.create(
                     workspace_slug=workspace_slug,
@@ -230,10 +273,30 @@ def register(mcp: FastMCP) -> None:
         if not related_workitem_id:
             return missing(action, "related_workitem_id")
         remove = client.work_items.dependencies.remove if is_dependency else client.work_items.custom_relations.remove
-        remove(
-            workspace_slug=workspace_slug,
-            project_id=project_id,
-            work_item_id=workitem_id,
-            related_work_item_id=related_workitem_id,
-        )
+        try:
+            remove(
+                workspace_slug=workspace_slug,
+                project_id=project_id,
+                work_item_id=workitem_id,
+                related_work_item_id=related_workitem_id,
+            )
+        except PlaneError as exc:
+            if not _not_found(exc):
+                raise
+            if not is_dependency:
+                return "Error: this Plane server has no custom relations, so there is nothing to remove."
+            try:
+                client.work_items.relations.delete(
+                    workspace_slug=workspace_slug,
+                    project_id=project_id,
+                    work_item_id=workitem_id,
+                    data=RemoveWorkItemRelation(related_issue=related_workitem_id),
+                )
+            except PlaneError as inner:
+                if _not_found(inner):
+                    return (
+                        "Error: this Plane server cannot remove a relation through the API "
+                        "(it has no relations/remove endpoint). Remove it in the web UI."
+                    )
+                raise
         return None
