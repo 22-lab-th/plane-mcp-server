@@ -19,7 +19,7 @@ ACTIONS = (
         "get_connector",
         ("provider",),
         read=True,
-        note="redacted God Mode configuration; unscoped instance-admin token only",
+        note="redacted God Mode configuration; needs an unscoped instance-admin token granted instance_scope",
     ),
     Action(
         "update_connector",
@@ -43,7 +43,8 @@ def register(mcp: FastMCP) -> None:
             "Administer Confluence and Jira connections in God Mode.",
             ACTIONS,
             "Instance operations require PLANE_ENABLE_INSTANCE_TOOLS=1 and an unscoped API token "
-            "owned by an instance admin. "
+            "owned by an instance admin that an operator has granted instance_scope "
+            "(api_tokens.instance_scope, set from a Django shell on the Plane backend; without it the backend answers 403). "
             "token_from_env reads PLANE_CONFLUENCE_API_TOKEN or PLANE_JIRA_API_TOKEN in local stdio only; "
             "Never send a token in tool arguments. Omit token options to keep the saved token. "
             "Disable before clearing.",

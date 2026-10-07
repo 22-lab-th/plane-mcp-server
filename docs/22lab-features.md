@@ -179,7 +179,11 @@ also requires confirmation. Review the target and local edits before confirming.
 
 Use an **unscoped Plane API token owned by an instance administrator** and enable
 `PLANE_ENABLE_INSTANCE_TOOLS=1`. A workspace-bound token cannot administer the
-instance, even if its owner is an instance admin.
+instance, even if its owner is an instance admin. The token must also carry the
+`instance_scope` grant (`api_tokens.instance_scope`, available from backend migration 0133):
+an operator sets it from a Django shell on the Plane backend, for example
+`APIToken.objects.filter(pk=<token id>).update(instance_scope=True)`. It cannot be set
+through the API, and without it the backend answers 403 even for an instance admin.
 
 ```python
 instance(action="get_connector", provider="confluence")
