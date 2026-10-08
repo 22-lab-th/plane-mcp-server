@@ -113,9 +113,21 @@ def test_upload_from_url_rejects_a_private_address(attachment_tool):
 
 
 def test_upload_from_url_sends_the_fetched_bytes(attachment_tool, monkeypatch):
+    """Fetch and storage POST both go through safe_http; the SDK raw POST is never used."""
     tool, spy, _ = attachment_tool
-    monkeypatch.setattr(module.safe_http, "request", lambda *a, **k: _Response(PNG, {"Content-Type": "image/png"}))
-    monkeypatch.setattr(module, "attachment_to_dict", lambda attachment, slug: {"id": ATTACHMENT})
+    spy.returns["work_items.attachments._post"] = {
+        "asset_id": "asset-1",
+        "upload_data": {"url": "https://plane.example/uploads", "fields": {"key": "k"}},
+        "attachment": {"id": ATTACHMENT, "asset": "asset-1"},
+    }
+    calls = []
+
+    def fake_request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        return _Response(PNG, {"Content-Type": "image/png"})
+
+    monkeypatch.setattr(module.safe_http, "request", fake_request)
+    monkeypatch.setattr(module, "attachment_to_dict", lambda attachment, slug: {"id": attachment.id})
 
     result = tool(
         action="upload_from_url",
@@ -124,8 +136,33 @@ def test_upload_from_url_sends_the_fetched_bytes(attachment_tool, monkeypatch):
         url="https://example.com/diagram.png",
     )
 
-    upload = next(c for c in spy.recorder.calls if c.method.endswith("upload_from_bytes"))
-    assert upload.kwargs["file_bytes"] == PNG
-    assert upload.kwargs["name"] == "diagram.png"
-    assert upload.kwargs["content_type"] == "image/png"
+    assert [c[0] for c in calls] == ["GET", "POST"]
+    method, url, kwargs = calls[1]
+    assert url == "https://plane.example/uploads"
+    assert kwargs["data"] == {"key": "k"}
+    assert kwargs["files"]["file"] == ("diagram.png", PNG, "image/png")
+    assert spy.recorder.calls[0].kwargs["data"] == {"name": "diagram.png", "type": "image/png", "size": len(PNG)}
+    assert spy.recorder.methods[-1].endswith("_patch")
+    assert not any(m.endswith("upload_from_bytes") for m in spy.recorder.methods)
     assert result == {"id": ATTACHMENT}
+
+
+def test_storage_upload_failure_hides_signed_url_and_removes_the_record(attachment_tool, monkeypatch):
+    tool, spy, _ = attachment_tool
+    signed = "https://plane.example/uploads?X-Amz-Signature=SECRETSIG"
+    spy.returns["work_items.attachments._post"] = {
+        "asset_id": "asset-1",
+        "upload_data": {"url": signed, "fields": {}},
+        "attachment": {"id": ATTACHMENT, "asset": "asset-1"},
+    }
+
+    def fake_request(method, url, **kwargs):
+        if method == "GET":
+            return _Response(PNG, {"Content-Type": "image/png"})
+        raise ValueError("ConnectionError")
+
+    monkeypatch.setattr(module.safe_http, "request", fake_request)
+    with pytest.raises(ValueError) as info:
+        tool(action="upload_from_url", project_id=PROJECT, workitem_id=WORK_ITEM, url="https://example.com/a.png")
+    assert "SECRETSIG" not in str(info.value)
+    assert spy.recorder.methods[-1].endswith("_delete")

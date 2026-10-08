@@ -185,7 +185,9 @@ def describe_error(exc: BaseException) -> str:
     return f"{type(exc).__name__}" + (f" (HTTP {status})" if status else "")
 
 
-_URL_SECRET = re.compile(r"(?P<scheme>https?://)(?:[^/\s@]*@)?(?P<rest>[^\s?#'\"]*)(?:\?[^\s#'\"]*)?", re.I)
+# Query strings run to the next whitespace: a quote or backslash inside one must
+# not end the match early and leave the signature behind.
+_URL_SECRET = re.compile(r"(?P<scheme>https?://)(?:[^/\s@]*@)?(?P<rest>[^\s?#'\"\\]*)(?:\?\S*)?", re.I)
 
 
 def redact_urls(text: str) -> str:

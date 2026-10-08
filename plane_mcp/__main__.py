@@ -54,6 +54,16 @@ class UserContextFilter(logging.Filter):
         return True
 
 
+def _redact_values(value):
+    if isinstance(value, str):
+        return redact_urls(value)
+    if isinstance(value, dict):
+        return {key: _redact_values(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact_values(item) for item in value]
+    return value
+
+
 class JSONFormatter(logging.Formatter):
     """JSON log formatter for structured logging (Datadog, ELK, etc.)."""
 
@@ -90,7 +100,8 @@ class JSONFormatter(logging.Formatter):
             log_entry["error"] = str(record.exc_info[1])
             log_entry["error_type"] = type(record.exc_info[1]).__name__
         # Signed URLs carry credentials in their query string; never log them.
-        return redact_urls(json.dumps(log_entry))
+        # Redact each value before serialising: JSON escaping would hide URL ends.
+        return json.dumps(_redact_values(log_entry))
 
 
 def configure_json_logging():

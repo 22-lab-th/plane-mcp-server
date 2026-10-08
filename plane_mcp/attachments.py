@@ -33,6 +33,7 @@ READABLE_TEXT_TYPES: frozenset[str] = frozenset(
     }
 )
 
+
 def assert_public_url(url: str) -> None:
     """Raise ValueError unless the URL is an allowed public http(s) URL (see safe_http)."""
     check_url(url)

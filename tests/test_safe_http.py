@@ -203,3 +203,29 @@ def test_json_log_formatter_redacts_signed_urls():
     line = JSONFormatter().format(record)
     assert "SECRETSIG" not in line and "SECRET2" not in line
     json.loads(line)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        'error: "https://s.test/o?X-Amz-Signature=SECRETSIG" failed',
+        "error: 'https://s.test/o?a=1&X-Amz-Signature=SECRETSIG' failed",
+        'json {"url": "https://s.test/o?sig=\\"q\\"&X-Amz-Signature=SECRETSIG"}',
+        "https://s.test/o?x=a\"b'c\\d&X-Amz-Signature=SECRETSIG",
+    ],
+)
+def test_log_formatter_redacts_signed_urls_containing_quotes(text):
+    from plane_mcp.__main__ import JSONFormatter
+
+    record = logging.LogRecord("t", logging.ERROR, __file__, 1, text, None, None)
+    line = JSONFormatter().format(record)
+    assert "SECRETSIG" not in line
+    json.loads(line)
+
+
+def test_log_formatter_redacts_middleware_json_fields():
+    from plane_mcp.__main__ import JSONFormatter
+
+    message = json.dumps({"event": "request_error", "error": 'bad "https://s.test/o?X-Amz-Signature=SECRETSIG"'})
+    record = logging.LogRecord("t", logging.ERROR, __file__, 1, message, None, None)
+    assert "SECRETSIG" not in JSONFormatter().format(record)
