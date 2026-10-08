@@ -12,11 +12,11 @@ import os
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-import requests
 from fastmcp import FastMCP
 from fastmcp.utilities.types import Image
 from plane.errors.errors import HttpError
 
+from plane_mcp import safe_http
 from plane_mcp.attachments import (
     HTTP_TIMEOUT,
     IMAGE_READ_LIMIT,
@@ -24,7 +24,6 @@ from plane_mcp.attachments import (
     READABLE_TEXT_TYPES,
     TEXT_READ_LIMIT,
     UPLOAD_SIZE_LIMIT,
-    assert_public_url,
     attachment_to_dict,
 )
 from plane_mcp.client import get_plane_client_context
@@ -107,10 +106,9 @@ def _read(client, workspace_slug: str, project_id: str, workitem_id: str, attach
 
     url = _download_url(client, workspace_slug, project_id, workitem_id, attachment_id)
     try:
-        response = requests.get(url, timeout=HTTP_TIMEOUT)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        raise ValueError(f"Failed to fetch attachment content: {exc}") from exc
+        response = safe_http.request("GET", url, timeout=HTTP_TIMEOUT)
+    except ValueError as exc:
+        raise ValueError(f"Failed to fetch attachment content: {exc}") from None
 
     payload = response.content
     limit = IMAGE_READ_LIMIT if is_image else TEXT_READ_LIMIT
@@ -126,19 +124,17 @@ def _read(client, workspace_slug: str, project_id: str, workitem_id: str, attach
 
 
 def _upload(client, workspace_slug: str, project_id: str, workitem_id: str, url: str, name: str):
-    assert_public_url(url)
     try:
-        response = requests.get(url, timeout=HTTP_TIMEOUT)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        raise ValueError(f"Failed to fetch file from {url!r}: {exc}") from exc
+        response = safe_http.request("GET", url, timeout=HTTP_TIMEOUT)
+    except ValueError as exc:
+        raise ValueError(f"Failed to fetch file from {safe_http.redact_urls(url)!r}: {exc}") from None
 
     declared = response.headers.get("Content-Length")
     payload = response.content
     size = max(int(declared) if declared else 0, len(payload))
     if size > UPLOAD_SIZE_LIMIT:
         raise ValueError(
-            f"File at {url!r} is too large ({size // 1024 // 1024} MB). Maximum allowed "
+            f"File at {safe_http.redact_urls(url)!r} is too large ({size // 1024 // 1024} MB). Maximum allowed "
             f"size is {UPLOAD_SIZE_LIMIT // 1024 // 1024} MB."
         )
 

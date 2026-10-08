@@ -43,7 +43,9 @@ def attachment_tool(registered, spy, monkeypatch):
 
     def stub(name: str, content_type: str, payload: bytes = PNG):
         spy.returns["work_items.attachments.list"] = [_attachment(name, content_type)]
-        monkeypatch.setattr(module.requests, "get", lambda *a, **k: _Response(payload, {"Content-Type": content_type}))
+        monkeypatch.setattr(
+            module.safe_http, "request", lambda *a, **k: _Response(payload, {"Content-Type": content_type})
+        )
 
     return registered["workitem_attachment"].fn, spy, stub
 
@@ -112,7 +114,7 @@ def test_upload_from_url_rejects_a_private_address(attachment_tool):
 
 def test_upload_from_url_sends_the_fetched_bytes(attachment_tool, monkeypatch):
     tool, spy, _ = attachment_tool
-    monkeypatch.setattr(module.requests, "get", lambda *a, **k: _Response(PNG, {"Content-Type": "image/png"}))
+    monkeypatch.setattr(module.safe_http, "request", lambda *a, **k: _Response(PNG, {"Content-Type": "image/png"}))
     monkeypatch.setattr(module, "attachment_to_dict", lambda attachment, slug: {"id": ATTACHMENT})
 
     result = tool(
