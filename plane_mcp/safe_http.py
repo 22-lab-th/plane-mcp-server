@@ -193,3 +193,27 @@ _URL_SECRET = re.compile(r"(?P<scheme>https?://)(?:[^/\s@]*@)?(?P<rest>[^\s?#'\"
 def redact_urls(text: str) -> str:
     """Strip userinfo and query strings from any URL inside text."""
     return _URL_SECRET.sub(lambda m: m.group("scheme") + m.group("rest"), text)
+
+
+def scrub(value: Any) -> Any:
+    """Redact URLs in every string of a JSON-like value, dictionary keys included.
+
+    A key that collides with another after redaction gets a numeric suffix
+    instead of overwriting, and the original key is never kept.
+    """
+    if isinstance(value, str):
+        return redact_urls(value)
+    if isinstance(value, dict):
+        out: dict[Any, Any] = {}
+        for key, item in value.items():
+            safe_key = redact_urls(key) if isinstance(key, str) else key
+            if safe_key in out:
+                n = 2
+                while f"{safe_key}#{n}" in out:
+                    n += 1
+                safe_key = f"{safe_key}#{n}"
+            out[safe_key] = scrub(item)
+        return out
+    if isinstance(value, (list, tuple)):
+        return [scrub(item) for item in value]
+    return value

@@ -85,7 +85,7 @@ def _download_url(client, workspace_slug: str, project_id: str, workitem_id: str
             attachment_id=attachment_id,
         )
     except HttpError as exc:
-        raise ValueError(f"Failed to get download URL: HTTP {exc.status_code} - {exc.response}") from exc
+        raise ValueError(f"Failed to get download URL: HTTP {exc.status_code}") from None
 
 
 def _read(client, workspace_slug: str, project_id: str, workitem_id: str, attachment_id: str):
@@ -148,7 +148,8 @@ def _upload(client, workspace_slug: str, project_id: str, workitem_id: str, url:
     try:
         attachment = _store(client, workspace_slug, project_id, workitem_id, payload, filename, content_type)
     except HttpError as exc:
-        raise ValueError(f"Failed to upload attachment: HTTP {exc.status_code} - {exc.response}") from exc
+        # Plane's error body can echo the presigned upload data; report the status only.
+        raise ValueError(f"Failed to upload attachment: HTTP {exc.status_code}") from None
     return attachment_to_dict(attachment, workspace_slug)
 
 

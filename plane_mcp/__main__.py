@@ -16,7 +16,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from plane_mcp.doctor import run_doctor
-from plane_mcp.safe_http import redact_urls
+from plane_mcp.safe_http import scrub
 from plane_mcp.server import get_header_mcp, get_oauth_mcp, get_stdio_mcp
 
 LOG_USER_INFO: bool = os.getenv("LOG_USER_INFO", "").lower() == "true"
@@ -52,16 +52,6 @@ class UserContextFilter(logging.Filter):
         # stdio mode has no token; fall back to the configured workspace.
         record.workspace_slug = workspace_slug or os.getenv("PLANE_WORKSPACE_SLUG") or None
         return True
-
-
-def _redact_values(value):
-    if isinstance(value, str):
-        return redact_urls(value)
-    if isinstance(value, dict):
-        return {key: _redact_values(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_redact_values(item) for item in value]
-    return value
 
 
 class JSONFormatter(logging.Formatter):
@@ -100,8 +90,8 @@ class JSONFormatter(logging.Formatter):
             log_entry["error"] = str(record.exc_info[1])
             log_entry["error_type"] = type(record.exc_info[1]).__name__
         # Signed URLs carry credentials in their query string; never log them.
-        # Redact each value before serialising: JSON escaping would hide URL ends.
-        return json.dumps(_redact_values(log_entry))
+        # Redact every key and value before serialising: JSON escaping would hide URL ends.
+        return json.dumps(scrub(log_entry))
 
 
 def configure_json_logging():
