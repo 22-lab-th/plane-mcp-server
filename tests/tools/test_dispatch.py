@@ -470,11 +470,12 @@ def test_uploading_a_local_page_image_uses_presigned_storage_and_verifies_it(reg
 
     upload_calls = []
 
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
+        assert method == "POST"
         upload_calls.append((url, kwargs))
         return UploadResponse()
 
-    monkeypatch.setattr("plane_mcp.tools.page.requests.post", fake_post)
+    monkeypatch.setattr("plane_mcp.safe_http.request", fake_request)
 
     result = registered["page"].fn(
         action="upload_asset_from_path",

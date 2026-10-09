@@ -12,11 +12,12 @@ import os
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-import requests
 from fastmcp import FastMCP
 from fastmcp.utilities.types import Image
 from plane.errors.errors import HttpError
+from plane.models.work_items import WorkItemAttachment
 
+from plane_mcp import safe_http
 from plane_mcp.attachments import (
     HTTP_TIMEOUT,
     IMAGE_READ_LIMIT,
@@ -24,7 +25,6 @@ from plane_mcp.attachments import (
     READABLE_TEXT_TYPES,
     TEXT_READ_LIMIT,
     UPLOAD_SIZE_LIMIT,
-    assert_public_url,
     attachment_to_dict,
 )
 from plane_mcp.client import get_plane_client_context
@@ -85,7 +85,7 @@ def _download_url(client, workspace_slug: str, project_id: str, workitem_id: str
             attachment_id=attachment_id,
         )
     except HttpError as exc:
-        raise ValueError(f"Failed to get download URL: HTTP {exc.status_code} - {exc.response}") from exc
+        raise ValueError(f"Failed to get download URL: HTTP {exc.status_code}") from None
 
 
 def _read(client, workspace_slug: str, project_id: str, workitem_id: str, attachment_id: str):
@@ -107,10 +107,9 @@ def _read(client, workspace_slug: str, project_id: str, workitem_id: str, attach
 
     url = _download_url(client, workspace_slug, project_id, workitem_id, attachment_id)
     try:
-        response = requests.get(url, timeout=HTTP_TIMEOUT)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        raise ValueError(f"Failed to fetch attachment content: {exc}") from exc
+        response = safe_http.request("GET", url, timeout=HTTP_TIMEOUT)
+    except ValueError as exc:
+        raise ValueError(f"Failed to fetch attachment content: {exc}") from None
 
     payload = response.content
     limit = IMAGE_READ_LIMIT if is_image else TEXT_READ_LIMIT
@@ -126,19 +125,17 @@ def _read(client, workspace_slug: str, project_id: str, workitem_id: str, attach
 
 
 def _upload(client, workspace_slug: str, project_id: str, workitem_id: str, url: str, name: str):
-    assert_public_url(url)
     try:
-        response = requests.get(url, timeout=HTTP_TIMEOUT)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        raise ValueError(f"Failed to fetch file from {url!r}: {exc}") from exc
+        response = safe_http.request("GET", url, timeout=HTTP_TIMEOUT)
+    except ValueError as exc:
+        raise ValueError(f"Failed to fetch file from {safe_http.redact_urls(url)!r}: {exc}") from None
 
     declared = response.headers.get("Content-Length")
     payload = response.content
     size = max(int(declared) if declared else 0, len(payload))
     if size > UPLOAD_SIZE_LIMIT:
         raise ValueError(
-            f"File at {url!r} is too large ({size // 1024 // 1024} MB). Maximum allowed "
+            f"File at {safe_http.redact_urls(url)!r} is too large ({size // 1024 // 1024} MB). Maximum allowed "
             f"size is {UPLOAD_SIZE_LIMIT // 1024 // 1024} MB."
         )
 
@@ -149,17 +146,43 @@ def _upload(client, workspace_slug: str, project_id: str, workitem_id: str, url:
         content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
     try:
-        attachment = client.work_items.attachments.upload_from_bytes(
-            workspace_slug=workspace_slug,
-            project_id=project_id,
-            work_item_id=workitem_id,
-            file_bytes=payload,
-            name=filename,
-            content_type=content_type,
-        )
+        attachment = _store(client, workspace_slug, project_id, workitem_id, payload, filename, content_type)
     except HttpError as exc:
-        raise ValueError(f"Failed to upload attachment: HTTP {exc.status_code} - {exc.response}") from exc
+        # Plane's error body can echo the presigned upload data; report the status only.
+        raise ValueError(f"Failed to upload attachment: HTTP {exc.status_code}") from None
     return attachment_to_dict(attachment, workspace_slug)
+
+
+def _store(
+    client, workspace_slug: str, project_id: str, workitem_id: str, payload: bytes, name: str, content_type: str
+):
+    """SDK upload_from_bytes, with the storage POST sent through safe_http.
+
+    The SDK posts to the presigned storage URL with plain requests (redirects
+    followed, raw exception text). Doing the same three steps here keeps that
+    POST inside the egress guard and its errors free of the signed URL.
+    """
+    resource = client.work_items.attachments
+    root = f"{workspace_slug}/projects/{project_id}/work-items/{workitem_id}/attachments"
+    raw = resource._post(root, {"name": name, "type": content_type, "size": len(payload)})
+    upload_data = raw["upload_data"]
+    asset_id = raw["asset_id"]
+    try:
+        safe_http.request(
+            "POST",
+            upload_data["url"],
+            data=upload_data.get("fields") or {},
+            files={"file": (name, payload, content_type)},
+            timeout=HTTP_TIMEOUT,
+        )
+    except ValueError as exc:
+        try:
+            resource._delete(f"{root}/{asset_id}")
+        except HttpError:
+            pass
+        raise ValueError(f"Failed to upload attachment to storage: {exc}") from None
+    resource._patch(f"{root}/{asset_id}", {"is_uploaded": True})
+    return WorkItemAttachment.model_validate(raw["attachment"])
 
 
 def register(mcp: FastMCP) -> None:

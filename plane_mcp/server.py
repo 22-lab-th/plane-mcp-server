@@ -9,7 +9,7 @@ from mcp.types import Icon
 
 from plane_mcp.auth import PlaneHeaderAuthProvider, PlaneOAuthProvider
 from plane_mcp.instructions import SERVER_INSTRUCTIONS
-from plane_mcp.middleware import CoerceArguments, PlaneLoggingMiddleware, ValidateActionArguments
+from plane_mcp.middleware import CoerceArguments, PlaneLoggingMiddleware, ScrubSignedUrls, ValidateActionArguments
 from plane_mcp.storage import build_token_store
 from plane_mcp.tools import register_tools
 
@@ -53,6 +53,7 @@ LOG_PAYLOADS = os.getenv("LOG_PAYLOADS", "true").lower() == "true"
 
 def _configured(mcp: FastMCP) -> FastMCP:
     """The middleware stack and tools every transport shares."""
+    mcp.add_middleware(ScrubSignedUrls())  # first = outermost: sees every error and result
     mcp.add_middleware(PlaneLoggingMiddleware(include_payloads=LOG_PAYLOADS))
     mcp.add_middleware(CoerceArguments())
     mcp.add_middleware(ValidateActionArguments())

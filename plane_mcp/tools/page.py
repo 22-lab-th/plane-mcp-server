@@ -12,9 +12,8 @@ import os
 from datetime import date
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import urljoin
+from urllib.parse import urlsplit
 
-import requests
 from fastmcp import FastMCP
 from plane.errors import HttpError
 from plane.models.collections import AddCollectionPages, UpdateCollectionPage
@@ -22,7 +21,8 @@ from plane.models.pages import CreatePage, Page, UpdatePage
 from plane.models.query_params import PaginatedQueryParams
 from plane.models.work_item_pages import CreateWorkItemPage, WorkItemPage
 
-from plane_mcp.attachments import HTTP_TIMEOUT, READABLE_IMAGE_TYPES, UPLOAD_SIZE_LIMIT, assert_public_url
+from plane_mcp import safe_http
+from plane_mcp.attachments import HTTP_TIMEOUT, READABLE_IMAGE_TYPES, UPLOAD_SIZE_LIMIT
 from plane_mcp.client import get_plane_client_context
 from plane_mcp.toolkit import Action, as_params, build_annotations, build_description, envelope, missing, needs
 
@@ -252,27 +252,18 @@ def _read_allowed_file(file_path: str, name: str) -> tuple[bytes, str, str]:
 
 
 def _fetch_public_image(url: str, name: str) -> tuple[bytes, str, str]:
-    current_url = url
-    for _ in range(6):
-        assert_public_url(current_url)
-        try:
-            response = requests.get(current_url, timeout=HTTP_TIMEOUT, allow_redirects=False)
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            raise ValueError(f"Failed to fetch image from {current_url!r}: {exc}") from exc
+    try:
+        response = safe_http.request("GET", url, timeout=HTTP_TIMEOUT)
+    except ValueError as exc:
+        raise ValueError(f"Failed to fetch image from {safe_http.redact_urls(url)!r}: {exc}") from None
 
-        if 300 <= response.status_code < 400 and response.headers.get("Location"):
-            current_url = urljoin(current_url, response.headers["Location"])
-            continue
-
-        declared_size = response.headers.get("Content-Length")
-        if declared_size and int(declared_size) > UPLOAD_SIZE_LIMIT:
-            raise ValueError(f"Image exceeds the {UPLOAD_SIZE_LIMIT // 1024 // 1024} MB upload limit")
-        filename = name or Path(requests.utils.urlparse(current_url).path).name or "page-image"
-        payload = response.content
-        filename, content_type = _normalise_image(payload, filename, response.headers.get("Content-Type", ""))
-        return payload, filename, content_type
-    raise ValueError("Too many redirects while fetching page image")
+    declared_size = response.headers.get("Content-Length")
+    if declared_size and int(declared_size) > UPLOAD_SIZE_LIMIT:
+        raise ValueError(f"Image exceeds the {UPLOAD_SIZE_LIMIT // 1024 // 1024} MB upload limit")
+    filename = name or Path(urlsplit(response.url).path).name or "page-image"
+    payload = response.content
+    filename, content_type = _normalise_image(payload, filename, response.headers.get("Content-Type", ""))
+    return payload, filename, content_type
 
 
 def _upload_asset(
@@ -287,21 +278,21 @@ def _upload_asset(
         raise ValueError("Page asset API did not return asset_id and upload_data.url")
 
     try:
-        response = requests.post(
+        safe_http.request(
+            "POST",
             upload_url,
             data=upload_data.get("fields") or {},
             files={"file": (name, payload, content_type)},
             timeout=HTTP_TIMEOUT,
         )
-        response.raise_for_status()
         client.pages._patch(f"{endpoint}/{asset_id}", {"is_uploaded": True})
         verified = client.pages._get(f"{endpoint}/{asset_id}")
-    except (requests.RequestException, HttpError) as exc:
+    except (ValueError, HttpError) as exc:
         try:
             client.pages._delete(f"{endpoint}/{asset_id}")
         except HttpError:
             pass
-        raise ValueError(f"Page image upload failed: {exc}") from exc
+        raise ValueError(f"Page image upload failed: {safe_http.redact_urls(str(exc))}") from None
 
     if not verified.get("is_uploaded"):
         raise ValueError("Page asset API did not confirm the uploaded image")

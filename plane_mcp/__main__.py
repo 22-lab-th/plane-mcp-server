@@ -16,6 +16,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from plane_mcp.doctor import run_doctor
+from plane_mcp.safe_http import scrub
 from plane_mcp.server import get_header_mcp, get_oauth_mcp, get_stdio_mcp
 
 LOG_USER_INFO: bool = os.getenv("LOG_USER_INFO", "").lower() == "true"
@@ -88,7 +89,9 @@ class JSONFormatter(logging.Formatter):
         if record.exc_info and record.exc_info[1]:
             log_entry["error"] = str(record.exc_info[1])
             log_entry["error_type"] = type(record.exc_info[1]).__name__
-        return json.dumps(log_entry)
+        # Signed URLs carry credentials in their query string; never log them.
+        # Redact every key and value before serialising: JSON escaping would hide URL ends.
+        return json.dumps(scrub(log_entry))
 
 
 def configure_json_logging():
