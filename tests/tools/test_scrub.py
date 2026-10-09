@@ -183,3 +183,12 @@ def test_log_formatter_scrubs_signed_urls_in_keys(payload):
     if len(payload) == 2:
         # Colliding redacted keys are both kept, neither overwrites the other.
         assert {"https://plane.example/uploads/obj", "https://plane.example/uploads/obj#2"} <= set(parsed)
+
+
+def test_exempt_action_error_envelope_is_scrubbed(server, spy):
+    """r4 R1: an SDK error returned (not raised) by a signed-link action is still scrubbed."""
+    spy.returns["pages._get"] = _signed_http_error()
+    result = _call(server, "project_file", {"action": "download_url", "project_id": "p", "file_id": "f"})
+    text = _text(result)
+    assert "status_code" in text and "400" in text
+    assert "SECRETSIG" not in text and "SECRETCRED" not in text

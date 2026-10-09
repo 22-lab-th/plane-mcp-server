@@ -178,9 +178,17 @@ class ScrubSignedUrls(Middleware):
         except Exception as exc:  # noqa: BLE001 - every error leaves through here
             raise ToolError(scrub(str(exc))) from None
         arguments = getattr(context.message, "arguments", None) or {}
-        if (context.message.name, arguments.get("action")) in SIGNED_LINK_ACTIONS:
+        if (context.message.name, arguments.get("action")) in SIGNED_LINK_ACTIONS and not _is_error_envelope(result):
             return result
         return _scrub_result(result)
+
+
+def _is_error_envelope(result: ToolResult) -> bool:
+    """True for the `{"error": ..., "status_code": ...}` dict extensions.request returns on HttpError."""
+    data = result.structured_content
+    if isinstance(data, dict) and set(data) == {"result"}:
+        data = data["result"]
+    return isinstance(data, dict) and "error" in data and "status_code" in data
 
 
 def _scrub_result(result: ToolResult) -> ToolResult:
