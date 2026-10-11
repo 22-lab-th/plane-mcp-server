@@ -5,12 +5,15 @@ from __future__ import annotations
 from collections.abc import Collection
 from typing import Any
 
+from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 from fastmcp.server.middleware.logging import StructuredLoggingMiddleware
 from fastmcp.tools.tool import ToolResult
 from fastmcp.utilities.logging import get_logger
+from mcp.types import TextContent
 
 from plane_mcp.coercion import coerce_arguments
+from plane_mcp.safe_http import scrub
 from plane_mcp.tools.registry import action_arguments, alias_table
 
 logger = get_logger(__name__)
@@ -147,3 +150,52 @@ class PlaneLoggingMiddleware(StructuredLoggingMiddleware):
 
     def _create_error_message(self, context: MiddlewareContext, start_time: float, error: Exception) -> dict:
         return super()._create_error_message(context, start_time, error) | self._operation(context)
+
+
+# Actions whose whole purpose is to hand the caller a signed link. Their successful
+# results pass through unchanged; their errors are still scrubbed.
+SIGNED_LINK_ACTIONS = frozenset(
+    {
+        ("workitem_attachment", "download_url"),
+        ("project_file", "download_url"),
+        ("project_file", "preview_url"),
+        ("page", "download_asset_url"),
+    }
+)
+
+
+class ScrubSignedUrls(Middleware):
+    """Strip URL query strings and userinfo from everything a tool call returns.
+
+    Outermost middleware: every tool error is re-raised with scrubbed text and no
+    chained cause, and every result is scrubbed (text content and structured
+    content, keys and values) unless the action is in SIGNED_LINK_ACTIONS.
+    """
+
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        try:
+            result = await call_next(context)
+        except Exception as exc:  # noqa: BLE001 - every error leaves through here
+            raise ToolError(scrub(str(exc))) from None
+        arguments = getattr(context.message, "arguments", None) or {}
+        if (context.message.name, arguments.get("action")) in SIGNED_LINK_ACTIONS and not _is_error_envelope(result):
+            return result
+        return _scrub_result(result)
+
+
+def _is_error_envelope(result: ToolResult) -> bool:
+    """True for the `{"error": ..., "status_code": ...}` dict extensions.request returns on HttpError."""
+    data = result.structured_content
+    if isinstance(data, dict) and set(data) == {"result"}:
+        data = data["result"]
+    return isinstance(data, dict) and "error" in data and "status_code" in data
+
+
+def _scrub_result(result: ToolResult) -> ToolResult:
+    content = []
+    for block in result.content:
+        if isinstance(block, TextContent):
+            block = block.model_copy(update={"text": scrub(block.text)})
+        content.append(block)
+    structured = scrub(result.structured_content) if result.structured_content is not None else None
+    return ToolResult(content=content, structured_content=structured, meta=result.meta)
