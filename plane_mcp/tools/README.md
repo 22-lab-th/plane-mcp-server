@@ -1,7 +1,7 @@
 # The tool surface
 
 **36 tools**, one per Plane resource, each taking an `action` parameter that
-selects the operation. 282 actions in total.
+selects the operation. 284 actions in total.
 
 ```python
 workitem(action="create", project_id=..., name="Fix login")
@@ -223,10 +223,10 @@ adopt anyway if the project write is refused.
 | `workitem_property` | `list` · `retrieve` · `create` · `update` · `delete` · `manage_type_properties` · `list_options` · `retrieve_option` · `create_option` · `update_option` · `delete_option` · `get_value` · `set_value` · `delete_value` |
 | `workitem_relation` | `list` · `create` · `delete` · `list_definitions` · `create_definition` · `update_definition` · `delete_definition` |
 | `workitem_type` | `list` · `retrieve` · `resolve` · `create` · `update` · `delete` · `import_to_project` |
-| `workspace` | `get_features` · `update_features` |
+| `workspace` | `get_features` · `update_features` · `get_capabilities` |
 | `template` | `list` · `create` · `update` · `delete` |
 | `collection` | `list` · `retrieve` · `create` · `update` · `delete` · `list_pages` · `search_pages` · `add_pages` · `remove_page` · `list_members` · `add_member` · `update_member` · `remove_member` |
-| `project_file` | `list` · `retrieve` · `get_storage` · `list_activity` · `preview_url` · `download_url` · `create_folder` · `update_folder` · `delete_folder` · `update` · `delete` · `restore` · `purge` · `copy` · `copy_to_project` · `move_to_project` · `list_versions` · `activate_version` · `list_entity_links` · `link` · `unlink` · `initiate_upload` · `complete_upload` · `abort_upload` · `upload_from_path` |
+| `project_file` | `list` · `retrieve` · `get_storage` · `list_activity` · `preview_url` · `download_url` · `create_folder` · `update_folder` · `delete_folder` · `update` · `delete` · `restore` · `purge` · `copy` · `copy_to_project` · `move_to_project` · `list_versions` · `activate_version` · `list_entity_links` · `link` · `unlink` · `initiate_upload` · `complete_upload` · `abort_upload` · `upload_from_path` · `get_web_url` |
 | `bookmark` | `list` · `retrieve` · `create` · `update` · `delete` · `get_url_metadata` · `list_groups` · `retrieve_group` · `create_group` · `update_group` · `delete_group` |
 | `atlassian_import` | `list_spaces` · `list_projects` · `list_members` · `list_runs` · `retrieve_run` · `start` · `sync` · `retry_failed` · `retry_selected` · `overwrite` · `import_html_export_from_path` |
 | `instance` | `get_connector` · `update_connector` · `test_connector` |

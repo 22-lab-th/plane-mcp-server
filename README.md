@@ -11,7 +11,7 @@ work items, cycles, modules, releases, customers and more.
 Built on [FastMCP](https://github.com/jlowin/fastmcp) and the official
 [`plane-sdk`](https://pypi.org/project/plane-sdk/).
 
-- **36 tools**, one per Plane resource, covering 282 operations
+- **36 tools**, one per Plane resource, covering 284 operations
 - **Local or remote** — stdio, streamable HTTP, SSE
 - **OAuth or API key** authentication
 
@@ -189,6 +189,33 @@ Seven names chose between two operations with a parameter
 (`manage_project_archive(archive=False)`), which one tool-and-action pair cannot
 reproduce; calling one tells you its replacement. `get_pql_reference` is
 unchanged.
+
+## Backend readiness
+
+Run `plane-mcp-server doctor --require-extensions` before using the 22lab extension
+features. It selects an accessible project, checks core connectivity separately
+from Files, storage, bookmarks, Page history/summary and import routes, and returns
+a nonzero exit code when required extensions are unavailable. Use `--project-id`
+to select a specific project. The same read-only report is available through
+`workspace(action="get_capabilities", project_id="...")`.
+
+Set `PLANE_BACKEND_PROFILE=22lab` for this Community Edition backend. Unsupported
+cloud operations, PQL and workspace Page delete/restore fail before issuing API
+requests. The default `auto` profile leaves edition decisions to the backend;
+`upstream` preserves the upstream catalog. Tool count is not a capability guarantee.
+API failures set the MCP error flag and retain structured status/recovery fields.
+
+`project_file(action="get_web_url", project_id="...", file_id="...")` returns a
+stable authenticated Files link. It does not grant access to the target.
+
+The manually dispatched `22lab backend compatibility` GitHub workflow builds a
+selected Plane revision with isolated PostgreSQL, MinIO, Redis, RabbitMQ and Live,
+then runs a fresh stdio MCP process through the write smoke suite. It uses no
+production credentials. To run it locally with Docker available:
+
+```bash
+uv run python scripts/run_22lab_contracts.py --plane-dir /path/to/plane
+```
 
 ## Configuration
 

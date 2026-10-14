@@ -50,6 +50,7 @@ CONDITIONAL: dict[tuple[str, str], dict[str, object]] = {
     ("collection", "update"): {"name": "Renamed"},
     ("project_file", "update"): {"name": "Renamed"},
     ("project_file", "update_folder"): {"name": "Renamed"},
+    ("project_file", "get_web_url"): {"file_id": "file-1"},
     ("bookmark", "update"): {"title": "Renamed"},
     ("bookmark", "update_group"): {"name": "Renamed"},
     ("instance", "update_connector"): {"enabled": False},
@@ -76,6 +77,8 @@ CONDITIONAL: dict[tuple[str, str], dict[str, object]] = {
 # Actions whose guard clause legitimately answers without calling the SDK.
 NO_CALL_EXPECTED: set[tuple[str, str]] = {
     ("get_pql_reference", "read"),  # returns static reference text
+    ("project_file", "get_web_url"),  # builds an authenticated UI link
+    ("workspace", "get_capabilities"),  # exercises raw HTTP in test_upgrade.py
 }
 
 # Actions that need populated remote state or an outbound HTTP fetch to get past
@@ -139,6 +142,17 @@ def test_action_reaches_the_sdk(mod, action, registered, spy, monkeypatch):
         pytest.skip("needs populated remote state; covered by test_attachments.py")
     if (mod.NAME, action.name) == ("view", "retrieve"):
         spy.returns["projects._get"] = {"id": "view-1", "name": "View"}
+    if mod.NAME == "page" and action.name in {"retrieve", "create"}:
+        from plane.models.pages import Page
+
+        spy.returns["pages.retrieve_workspace_page"] = Page(id="page-1", name="Page")
+        spy.returns["pages.create_workspace_page"] = Page(id="page-1", name="Page")
+    if (mod.NAME, action.name) in {("project_file", "get_web_url"), ("workspace", "get_capabilities")}:
+        from types import SimpleNamespace
+
+        spy.pages.config = SimpleNamespace(base_path="https://plane.example/api/v1", api_key="test", access_token=None)
+    if (mod.NAME, action.name) == ("workspace", "get_capabilities"):
+        monkeypatch.setattr("plane_mcp.doctor.diagnose_connection", lambda **kwargs: {"connected": True})
     if mod.NAME == "instance":
         monkeypatch.setenv("PLANE_ENABLE_INSTANCE_TOOLS", "1")
         monkeypatch.setattr(
