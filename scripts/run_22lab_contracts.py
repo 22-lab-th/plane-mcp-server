@@ -22,7 +22,12 @@ def main():
     plane = options.plane_dir.resolve()
     assert (plane / "apps/api/Dockerfile.api").is_file()
     project = "plane-mcp-ci-" + secrets.token_hex(4)
-    backend_image, live_image = project + "-backend", project + "-live"
+    backend_image, live_image, storage_image = project + "-backend", project + "-live", project + "-minio"
+    storage_dockerfile = Path(__file__).resolve().parents[1] / ".github/docker/minio-ci.Dockerfile"
+    subprocess.run(
+        ["docker", "build", "-t", storage_image, "-f", str(storage_dockerfile), str(storage_dockerfile.parent)],
+        check=True,
+    )
     subprocess.run(
         ["docker", "build", "-t", backend_image, "-f", str(plane / "apps/api/Dockerfile.api"), str(plane / "apps/api")],
         check=True,
@@ -73,7 +78,7 @@ def main():
             },
         },
         "minio": {
-            "image": "minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
+            "image": storage_image,
             "command": ["server", "/data"],
             "ports": [f"127.0.0.1:{storage_port}:9000"],
             "environment": {"MINIO_ROOT_USER": "ci-access", "MINIO_ROOT_PASSWORD": "ci-secret-only"},
