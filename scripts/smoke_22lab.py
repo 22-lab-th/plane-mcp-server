@@ -3,8 +3,9 @@
 Reads only by default. --write requires two projects whose names start with
 'MCP validation', reserved for disposable operator fixtures. Fixture cleanup is
 performed by the release operator using the recorded workspace IDs.
-Write fixtures need a test token with 600 requests/minute because imports make
-multiple API requests inside one tool call.
+Write fixtures need an isolated deployment with API_KEY_RATE_LIMIT=600/minute
+because imports make multiple API requests inside one tool call. Token metadata
+alone does not configure the backend's throttle.
 """
 
 from __future__ import annotations

@@ -62,6 +62,8 @@ def main():
         "EMAIL_HOST_USER": "",
         "EMAIL_HOST_PASSWORD": "",
         "ENABLE_TELEMETRY": "0",
+        # API throttling reads deployment settings, not APIToken.allowed_rate_limit.
+        "API_KEY_RATE_LIMIT": "600/minute",
     }
     services = {
         "db": {
@@ -150,7 +152,7 @@ for index in range(2):
  ProjectMember.objects.create(workspace=w,project=p,member=u,role=20)
  State.objects.create(workspace=w,project=p,name="Backlog",group="backlog",default=True)
  projects.append(str(p.id))
-t=APIToken.objects.create(user=u,workspace=w,token=secrets.token_hex(24),allowed_rate_limit="600/min")
+t=APIToken.objects.create(user=u,workspace=w,token=secrets.token_hex(24))
 print(json.dumps({"workspace":w.slug,"api_key":t.token,"projects":projects}))
 """
             result = subprocess.run(
