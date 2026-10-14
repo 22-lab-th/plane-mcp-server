@@ -150,7 +150,7 @@ for index in range(2):
  ProjectMember.objects.create(workspace=w,project=p,member=u,role=20)
  State.objects.create(workspace=w,project=p,name="Backlog",group="backlog",default=True)
  projects.append(str(p.id))
-t=APIToken.objects.create(user=u,workspace=w,token=secrets.token_hex(24))
+t=APIToken.objects.create(user=u,workspace=w,token=secrets.token_hex(24),allowed_rate_limit="600/min")
 print(json.dumps({"workspace":w.slug,"api_key":t.token,"projects":projects}))
 """
             result = subprocess.run(

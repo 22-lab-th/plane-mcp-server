@@ -3,6 +3,8 @@
 Reads only by default. --write requires two projects whose names start with
 'MCP validation', reserved for disposable operator fixtures. Fixture cleanup is
 performed by the release operator using the recorded workspace IDs.
+Write fixtures need a test token with 600 requests/minute because imports make
+multiple API requests inside one tool call.
 """
 
 from __future__ import annotations
@@ -43,7 +45,7 @@ async def smoke(options):
             async with Client(transport) as client:
 
                 async def call(tool, action, **args):
-                    # Leave headroom under the default 60 API requests/minute.
+                    # Space core reads; import calls may each make multiple API requests.
                     await asyncio.sleep(1.1)
                     result = await client.call_tool(tool, {"action": action, **args}, raise_on_error=False)
                     if result.is_error:
