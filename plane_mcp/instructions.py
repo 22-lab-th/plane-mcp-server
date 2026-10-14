@@ -9,6 +9,12 @@ from __future__ import annotations
 SERVER_INSTRUCTIONS = """
 ## Epics
 
+First check backend support with `workspace get_capabilities`. The 22lab Community
+Edition backend has no work-item types or PQL; the Epic recipe below requires an
+edition supporting both. On 22lab, use project-scoped lists and filter the fully
+paginated results locally. Workspace-wide lists/counts and cloud-only resources
+are not universally available. Do not create a substitute Epic type implicitly.
+
 There are no epic tools — an epic is a work item whose type is named "Epic". Work
 items always belong to a project; ask which if one is not named.
 1. type = `workitem_type resolve` with project_id and name="Epic" — type.id is the type_id.

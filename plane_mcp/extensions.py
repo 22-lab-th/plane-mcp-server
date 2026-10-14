@@ -8,6 +8,8 @@ from urllib.parse import quote
 from plane.api.base_resource import BaseResource
 from plane.errors import HttpError
 
+from plane_mcp.errors import api_failure
+
 
 def segment(value: str) -> str:
     return quote(str(value), safe="")
@@ -30,13 +32,7 @@ def request(client, method: str, endpoint: str, *, data=None, params=None, insta
     except HttpError as exc:
         # Preserve job conflicts, partial progress and quota/permission reasons.
         # Do not retry a POST: the response may describe an already-created run.
-        payload = exc.response if isinstance(exc.response, dict) else {}
-        return {
-            **payload,
-            "error": payload.get("error") or payload.get("detail") or "Plane API request failed.",
-            "status_code": exc.status_code,
-            **({"upgrade_required": True} if exc.status_code == 404 and not payload else {}),
-        }
+        return api_failure(exc)
 
 
 def present(**values) -> dict:

@@ -1,6 +1,6 @@
 # 22lab Plane features through MCP
 
-This fork exposes 36 tools and 282 actions. The full action inventory is in
+This fork exposes 36 tools and 284 actions. The full action inventory is in
 [the tool reference](../plane_mcp/tools/README.md). New extension actions require
 the matching 22lab Plane backend with token routes under `/api/v1`. Install both
 repositories' current `main` versions; upgrading the MCP process alone does not
@@ -37,8 +37,10 @@ For a local checkout, an MCP client can use:
 Use the API origin or the reverse proxy origin that serves `/api/v1`. Local files
 are read on the MCP host; allow only the directories intended for imports. For
 HTTP deployment, mount those directories explicitly. Restart/reconnect clients
-after upgrading so their tool listing refreshes. `plane-mcp-server doctor` checks
-core connectivity and Pages routes; it does not certify all extension routes.
+after upgrading so their tool listing refreshes. `plane-mcp-server doctor --require-extensions` checks core connectivity and extension
+routes separately. `workspace get_capabilities` exposes the same report to MCP
+clients. Set `PLANE_BACKEND_PROFILE=22lab` to reject unavailable edition-specific
+operations before making API requests.
 
 Shared HTTP servers support individual PATs and `PLANE_OAUTH_ENABLED=false`.
 Members supply `Authorization: Bearer <Plane API token>` and

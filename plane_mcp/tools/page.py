@@ -7,6 +7,7 @@ pair for each, so the branch is explicit rather than a default.
 
 from __future__ import annotations
 
+import math
 import mimetypes
 import os
 from datetime import date
@@ -28,6 +29,14 @@ from plane_mcp.toolkit import Action, as_params, build_annotations, build_descri
 
 NAME = "page"
 TITLE = "Pages"
+
+
+def _page_record(value) -> Page:
+    payload = value.model_dump() if hasattr(value, "model_dump") else value
+    if isinstance(payload, dict) and "parent" in payload:
+        payload = {**payload, "parent_id": payload["parent"]}
+    return Page.model_validate(payload)
+
 
 ACTIONS = (
     Action(
@@ -173,16 +182,15 @@ def _patch_page(client, workspace_slug: str, page_id: str, data: UpdatePage, pro
     else:
         endpoint = f"{workspace_slug}/pages/{page_id}"
     response = client.pages._patch(endpoint, data.model_dump(exclude_none=True))
-    return Page.model_validate(response)
+    return _page_record(response)
 
 
 def _page_api_error(error: HttpError) -> str:
-    """Turn a missing public Pages API into an actionable self-hosted error."""
+    """A resource 404 alone cannot establish that the API is missing."""
     if error.status_code == 404:
         return (
-            "Error: Plane Pages API is not available through the API-token route on this instance. "
-            "The Plane web UI may still expose Pages through session-authenticated app routes, but MCP must not reuse "
-            "a browser cookie. Upgrade or extend the Plane backend to expose /api/v1 workspace/project Pages endpoints."
+            "Error: Page or API route not found. Verify the page/project IDs and access. "
+            "Use workspace get_capabilities or doctor to check API-token route support; do not reuse a browser cookie."
         )
     raise error
 
@@ -362,7 +370,7 @@ def register(mcp: FastMCP) -> None:
         description_html: str | None = None,
         parent_id: str | None = None,
         folders_only: bool = False,
-        sort_order: int | None = None,
+        sort_order: float | None = None,
         # Left unset rather than defaulted: 0 is a real access level.
         access: int | None = None,
         color: str | None = None,
@@ -376,6 +384,8 @@ def register(mcp: FastMCP) -> None:
         collection_id: str = "",
         archive: bool = True,
     ) -> Page | WorkItemPage | list[WorkItemPage] | dict[str, Any] | str | None:
+        if sort_order is not None and not math.isfinite(sort_order):
+            return "Error: sort_order must be finite"
         client, workspace_slug = get_plane_client_context()
 
         if action in {
@@ -482,6 +492,7 @@ def register(mcp: FastMCP) -> None:
                     )
                 else:
                     response = client.pages.list_workspace_pages(workspace_slug=workspace_slug, params=params)
+                    response.results = [_page_record(item) for item in response.results]
             except HttpError as error:
                 return _page_api_error(error)
             return envelope(response)
@@ -491,10 +502,14 @@ def register(mcp: FastMCP) -> None:
                 return missing(action, "page_id")
             try:
                 if project_id:
-                    return client.pages.retrieve_project_page(
-                        workspace_slug=workspace_slug, project_id=project_id, page_id=page_id
+                    return _page_record(
+                        client.pages.retrieve_project_page(
+                            workspace_slug=workspace_slug, project_id=project_id, page_id=page_id
+                        )
                     )
-                return client.pages.retrieve_workspace_page(workspace_slug=workspace_slug, page_id=page_id)
+                return _page_record(
+                    client.pages.retrieve_workspace_page(workspace_slug=workspace_slug, page_id=page_id)
+                )
             except HttpError as error:
                 return _page_api_error(error)
 
@@ -532,7 +547,7 @@ def register(mcp: FastMCP) -> None:
             try:
                 if project_id:
                     return client.pages._post(_project_page_endpoint(workspace_slug, project_id), payload)
-                return client.pages.create_workspace_page(workspace_slug=workspace_slug, data=data)
+                return _page_record(client.pages.create_workspace_page(workspace_slug=workspace_slug, data=data))
             except HttpError as error:
                 return _page_api_error(error)
 

@@ -16,7 +16,12 @@ def register_tools(mcp: FastMCP, *, legacy_names: bool = True) -> int:
     # Imported here, not at module scope: `registry` imports the resource modules
     # out of this package, so a top-level import would run while this module is
     # still initialising.
+    from plane_mcp.capabilities import CheckBackendCapabilities
+    from plane_mcp.errors import NormalizeToolErrors
     from plane_mcp.tools.registry import RESOURCES, alias_table
+
+    mcp.add_middleware(NormalizeToolErrors())
+    mcp.add_middleware(CheckBackendCapabilities())
 
     for mod in RESOURCES:
         mod.register(mcp)

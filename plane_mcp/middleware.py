@@ -7,10 +7,10 @@ from typing import Any
 
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 from fastmcp.server.middleware.logging import StructuredLoggingMiddleware
-from fastmcp.tools.tool import ToolResult
 from fastmcp.utilities.logging import get_logger
 
 from plane_mcp.coercion import coerce_arguments
+from plane_mcp.errors import failure
 from plane_mcp.tools.registry import action_arguments, alias_table
 
 logger = get_logger(__name__)
@@ -40,7 +40,7 @@ class ValidateActionArguments(Middleware):
         arguments = getattr(context.message, "arguments", None)
         if isinstance(arguments, dict) and (message := self.rejection(context.message.name, arguments)):
             logger.warning("Plane MCP: %s", message)
-            return ToolResult(content=message)
+            return failure({"error": message})
         return await call_next(context)
 
     def rejection(self, tool: str, arguments: dict) -> str | None:

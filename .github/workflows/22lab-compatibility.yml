@@ -1,0 +1,41 @@
+name: 22lab backend compatibility
+
+on:
+  pull_request:
+    paths:
+      - 'plane_mcp/**'
+      - 'scripts/smoke_22lab.py'
+      - 'scripts/run_22lab_contracts.py'
+      - '.github/workflows/22lab-compatibility.yml'
+      - '.github/docker/**'
+  workflow_dispatch:
+    inputs:
+      plane_ref:
+        description: Immutable Plane revision to verify
+        required: true
+        default: bc40bb70658c55fabc1b4125d173c7c4c074759f
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    if: github.repository == '22-lab-th/plane-mcp-server'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: 22-lab-th/plane
+          ref: ${{ inputs.plane_ref || 'bc40bb70658c55fabc1b4125d173c7c4c074759f' }}
+          path: backend
+          persist-credentials: false
+      - name: Install MCP and test dependencies
+        run: |
+          python3 -m pip install uv==0.11.24
+          uv sync --frozen --extra dev
+      - name: Verify MCP regressions
+        run: .venv/bin/python -m pytest -q
+      - name: Build selected backend and verify real MCP workflows
+        run: .venv/bin/python scripts/run_22lab_contracts.py --plane-dir backend

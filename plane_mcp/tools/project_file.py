@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Literal
+from urllib.parse import urlencode
 
 from fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict
 
 from plane_mcp.client import get_plane_client_context
+from plane_mcp.compat import normalize_plane_base_url
 from plane_mcp.extensions import present, project_path, request, segment
 from plane_mcp.project_files import upload_path
 from plane_mcp.toolkit import Action, build_annotations, build_description, needs
@@ -69,6 +72,13 @@ ACTIONS = (
         ("project_id", "file_path"),
         ("name", "mime_type", "folder_id", "file_id", "entity_type", "entity_id"),
         note="reserve, stream PUT and verify; file_id adds a version; local path requires PLANE_FILE_UPLOAD_ROOTS",
+    ),
+    Action(
+        "get_web_url",
+        ("project_id",),
+        ("file_id", "folder_id"),
+        read=True,
+        note="stable authenticated Files link; provide a file or folder ID",
     ),
 )
 
@@ -132,6 +142,7 @@ def register(mcp: FastMCP) -> None:
             "complete_upload",
             "abort_upload",
             "upload_from_path",
+            "get_web_url",
         ],
         project_id: str = "",
         file_id: str = "",
@@ -168,6 +179,8 @@ def register(mcp: FastMCP) -> None:
         }
         if error := needs(action, **required):
             return error
+        if action == "get_web_url" and not (file_id or folder_id):
+            return "Error: get_web_url requires file_id or folder_id"
         if "confirm" in declaration.requires and not confirm or action == "delete_folder" and recursive and not confirm:
             return needs(action, confirm=confirm) or "Error: confirm must be true"
         if (version_no is not None and version_no < 1) or (size_bytes is not None and size_bytes < 0):
@@ -177,6 +190,10 @@ def register(mcp: FastMCP) -> None:
         if to_root and (parent_id or folder_id):
             return "Error: to_root cannot be combined with a destination folder or parent"
         client, workspace = get_plane_client_context()
+        if action == "get_web_url":
+            origin = normalize_plane_base_url(os.getenv("PLANE_BASE_URL") or client.pages.config.base_path)
+            query = urlencode(present(folder=folder_id, file=file_id or None))
+            return {"url": f"{origin}/{segment(workspace)}/projects/{segment(project_id)}/files/?{query}"}
         root = project_path(workspace, project_id, "files")
         detail = f"{root}/{segment(file_id)}"
         paging = {"cursor": cursor, "page_size": min(max(per_page, 1), 200)}
