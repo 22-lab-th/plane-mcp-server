@@ -1,6 +1,12 @@
 name: 22lab backend compatibility
 
 on:
+  pull_request:
+    paths:
+      - 'plane_mcp/**'
+      - 'scripts/smoke_22lab.py'
+      - 'scripts/run_22lab_contracts.py'
+      - '.github/workflows/22lab-compatibility.yml'
   workflow_dispatch:
     inputs:
       plane_ref:
@@ -21,7 +27,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           repository: 22-lab-th/plane
-          ref: ${{ inputs.plane_ref }}
+          ref: ${{ inputs.plane_ref || 'bc40bb70658c55fabc1b4125d173c7c4c074759f' }}
           path: backend
           persist-credentials: false
       - name: Install MCP and test dependencies
